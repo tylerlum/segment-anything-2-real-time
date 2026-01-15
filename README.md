@@ -226,7 +226,7 @@ ImportError: /home/tylerlum/miniconda3/envs/sam2_ros_env_v2/lib/python3.11/site-
 ```
 python video_sam2.py \
 --input_dir rgb/ \
---output_dir /masks/
+--output_dir masks/
 ```
 
 This takes in as input a directory `rgb` with images, and it outputs masks to the `masks` dir.
