@@ -1,8 +1,56 @@
-from video_sam2 import run_video_sam2, get_user_point
+from video_sam2 import run_video_sam2 as run_video_sam2_same_process, get_user_point
+import subprocess
 import numpy as np
 from PIL import Image
 from pathlib import Path
 from tqdm import tqdm
+from typing import Optional
+
+def run_video_sam2(
+    input_dir: Path,
+    output_dir: Path,
+    use_negative_prompt: bool,
+    use_second_prompt: bool,
+    prompt_x: Optional[int] = None,
+    prompt_y: Optional[int] = None,
+    negative_prompt_x: Optional[int] = None,
+    negative_prompt_y: Optional[int] = None,
+    second_prompt_x: Optional[int] = None,
+    second_prompt_y: Optional[int] = None,
+    visualize: bool = False,
+) -> None:
+    RUN_WITH_SAME_PROCESS = False  # Same process seems to OOM
+    if RUN_WITH_SAME_PROCESS:
+        run_video_sam2_same_process(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            use_negative_prompt=use_negative_prompt,
+            use_second_prompt=use_second_prompt,
+            prompt_x=prompt_x,
+            prompt_y=prompt_y,
+            negative_prompt_x=negative_prompt_x,
+            negative_prompt_y=negative_prompt_y,
+            second_prompt_x=second_prompt_x,
+            second_prompt_y=second_prompt_y,
+            visualize=True,
+        )
+    else:
+        cmd = (
+            "python video_sam2.py "
+            + f"--input_dir {input_dir} "
+            + f"--output_dir {output_dir} "
+            + ("--use_negative_prompt " if use_negative_prompt else "")
+            + ("--use_second_prompt " if use_second_prompt else "")
+            + f"--prompt_x {prompt_x} "
+            + f"--prompt_y {prompt_y} "
+            + (f"--negative_prompt_x {negative_prompt_x} " if negative_prompt_x is not None else "")
+            + (f"--negative_prompt_y {negative_prompt_y} " if negative_prompt_y is not None else "")
+            + (f"--second_prompt_x {second_prompt_x} " if second_prompt_x is not None else "")
+            + (f"--second_prompt_y {second_prompt_y} " if second_prompt_y is not None else "")
+            + ("--visualize " if visualize else "")
+        )
+        print(f"Running command: {cmd}")
+        subprocess.run(cmd, shell=True, check=True)
 
 """
 /juno/u/kedia/FoundationPose/human_videos/Jan_15
@@ -49,6 +97,7 @@ from tqdm import tqdm
 │   └── wooden_spatula
 │       └── 20260115_233858
 """
+
 
 
 def main():
