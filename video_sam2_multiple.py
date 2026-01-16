@@ -60,11 +60,11 @@ def main():
         Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/eraser/amazon_eraser/20260115_232955/"),
         Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/eraser/anvil_eraser/20260115_233226/"),
         Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/eraser/expo_eraser/20260115_233123/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/hammer_2/clockwise/20260115_233354/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/hammer_2/counter_clockwise/20260115_233524/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/mallet/clockwise/20260115_233714/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/mallet/counter_clockwise/20260115_233844/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/040_large_marker/20260115_232621/"),
+        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/hammer_2/clockwise/"),
+        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/hammer_2/counter_clockwise/"),
+        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/mallet/clockwise"),
+        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/mallet/counter_clockwise"),
+        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/040_large_marker/20260115_232812"),
         Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/sharpie_closed/20260115_232717/"),
         Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/staples_open/20260115_232506/"),
         Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/screwdriver/black_screwdriver/20260115_235139/"),
@@ -77,7 +77,7 @@ def main():
     # Validate
     for demo_dir in tqdm(DEMO_DIRS, desc="Validating demo directories"):
         assert demo_dir.exists(), f"Demo directory {demo_dir} does not exist"
-        assert (demo_dir / "rgb").exists(), f"RGB directory {demo_dir / "rgb"} does not exist"
+        assert (demo_dir / "rgb").exists(), f"RGB directory {demo_dir / 'rgb'} does not exist"
 
     # Get first image for each demo directory
     first_img_filepaths = []
