@@ -104,7 +104,7 @@ def main():
         negative_prompts.append((negative_prompt_x, negative_prompt_y))
 
     # Run SAM2 for each demo directory
-    for demo_dir, prompt, negative_prompt in tqdm(zip(DEMO_DIRS, prompts, negative_prompts), desc="Running SAM2 for each demo directory"):
+    for demo_dir, prompt, negative_prompt in tqdm(zip(DEMO_DIRS, prompts, negative_prompts), desc="Running SAM2 for each demo directory", total=len(DEMO_DIRS)):
         input_dir = demo_dir / "rgb"
         output_dir = demo_dir.parent / "hand_mask"
         prompt_x, prompt_y = prompt

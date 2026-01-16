@@ -131,14 +131,14 @@ def run_video_sam2(
             jpg_filepaths.append(jpg_file)
     else:
         assert len(jpg_filepaths) == len(png_filepaths), (
-            "The number of jpg and png frames must be the same, something might be wrong..."
+            f"The number of jpg and png frames must be the same, something might be wrong in {input_dir}"
         )
         print(
             f"Found {len(jpg_filepaths)} jpg frames and {len(png_filepaths)} png frames"
         )
         print("Using the jpg frames")
 
-    assert len(jpg_filepaths) > 0, "No frames found in the input directory"
+    assert len(jpg_filepaths) > 0, f"No frames found in the input directory {input_dir}"
 
     if visualize:
         # take a look the first video frame
