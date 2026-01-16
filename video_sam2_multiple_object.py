@@ -103,25 +103,25 @@ def run_video_sam2(
 def main():
     # List of demo directories
     DEMO_DIRS = [
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/brush/anvil_brush/20260115_231442/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/brush/lab_brush/20260115_231622/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/brush/anvil_brush/20260115_231442/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/brush/lab_brush/20260115_231622/"),
         Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/brush/red_brush/20260115_231110/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/eraser/amazon_eraser/20260115_232955/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/eraser/anvil_eraser/20260115_233226/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/eraser/expo_eraser/20260115_233123/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/hammer_2/clockwise/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/hammer_2/counter_clockwise/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/mallet/clockwise"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/mallet/counter_clockwise"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/040_large_marker/20260115_232812"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/sharpie_closed/20260115_232717/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/staples_open/20260115_232506/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/screwdriver/black_screwdriver/20260115_235139/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/screwdriver/real_flat_screwdriver/20260115_235042/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/screwdriver/red_screwdriver/20260115_235241/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/spatula/black_spatula/20260115_233647/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/spatula/spoon_spatula/20260115_233602/"),
-        Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/spatula/wooden_spatula/20260115_233858/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/eraser/amazon_eraser/20260115_232955/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/eraser/anvil_eraser/20260115_233226/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/eraser/expo_eraser/20260115_233123/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/hammer_2/clockwise/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/hammer_2/counter_clockwise/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/mallet/clockwise"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/hammer/mallet/counter_clockwise"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/040_large_marker/20260115_232812"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/sharpie_closed/20260115_232717/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/marker/staples_open/20260115_232506/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/screwdriver/black_screwdriver/20260115_235139/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/screwdriver/real_flat_screwdriver/20260115_235042/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/screwdriver/red_screwdriver/20260115_235241/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/spatula/black_spatula/20260115_233647/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/spatula/spoon_spatula/20260115_233602/"),
+        # Path("/juno/u/kedia/FoundationPose/human_videos/Jan_15/spatula/wooden_spatula/20260115_233858/"),
     ]
     # Validate
     for demo_dir in tqdm(DEMO_DIRS, desc="Validating demo directories"):
@@ -144,29 +144,29 @@ def main():
 
     # Get prompts for each image
     prompts = []
-    negative_prompts = []
+    second_prompts = []
     for first_img_filepath in tqdm(first_img_filepaths, desc="Getting prompts for each image"):
         img = np.array(Image.open(first_img_filepath))
         prompt_x, prompt_y = get_user_point(img, title=f"Click on the image to select a point (Frame 0) for {first_img_filepath}")
-        negative_prompt_x, negative_prompt_y = get_user_point(img, title=f"Click on the image to select the NEGATIVE point (Frame 0) for {first_img_filepath}")
+        second_prompt_x, second_prompt_y = get_user_point(img, title=f"Click on the image to select the SECOND point (Frame 0) for {first_img_filepath}")
         prompts.append((prompt_x, prompt_y))
-        negative_prompts.append((negative_prompt_x, negative_prompt_y))
+        second_prompts.append((second_prompt_x, second_prompt_y))
 
     # Run SAM2 for each demo directory
-    for demo_dir, prompt, negative_prompt in tqdm(zip(DEMO_DIRS, prompts, negative_prompts), desc="Running SAM2 for each demo directory", total=len(DEMO_DIRS)):
+    for demo_dir, prompt, second_prompt in tqdm(zip(DEMO_DIRS, prompts, second_prompts), desc="Running SAM2 for each demo directory", total=len(DEMO_DIRS)):
         input_dir = demo_dir / "rgb"
-        output_dir = demo_dir / "hand_mask"
+        output_dir = demo_dir / "masks"
         prompt_x, prompt_y = prompt
-        negative_prompt_x, negative_prompt_y = negative_prompt
+        second_prompt_x, second_prompt_y = second_prompt
         run_video_sam2(
             input_dir=input_dir,
             output_dir=output_dir,
-            use_negative_prompt=True,
-            use_second_prompt=False,
+            use_negative_prompt=False,
+            use_second_prompt=True,
             prompt_x=prompt[0],
             prompt_y=prompt[1],
-            negative_prompt_x=negative_prompt[0],
-            negative_prompt_y=negative_prompt[1],
+            second_prompt_x=second_prompt[0],
+            second_prompt_y=second_prompt[1],
         )
 
 if __name__ == "__main__":
