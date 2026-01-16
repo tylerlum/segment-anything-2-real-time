@@ -26,12 +26,18 @@ def get_user_point(rgb_image: np.ndarray, title: str) -> Tuple[int, int]:
     return x, y
 
 
-def main(
+def run_video_sam2(
     input_dir: Path,
     output_dir: Path,
     use_negative_prompt: bool,
     use_second_prompt: bool,
-    visualize: bool,
+    prompt_x: Optional[int] = None,
+    prompt_y: Optional[int] = None,
+    negative_prompt_x: Optional[int] = None,
+    negative_prompt_y: Optional[int] = None,
+    second_prompt_x: Optional[int] = None,
+    second_prompt_y: Optional[int] = None,
+    visualize: bool = False,
 ) -> None:
     # select the device for computation
     if torch.cuda.is_available():
@@ -156,30 +162,42 @@ def main(
 
     # Get prompt as click
     img = np.array(Image.open(jpg_filepaths[ann_frame_idx]))
-    x, y = get_user_point(
-        rgb_image=img,
-        title=f"Click on the image to select a point (Frame {ann_frame_idx})",
-    )
-    print(f"Clicked point: ({x}, {y})")
+    if prompt_x is not None and prompt_y is not None:
+        x, y = prompt_x, prompt_y
+        print(f"Using provided point: ({x}, {y})")
+    else:
+        x, y = get_user_point(
+            rgb_image=img,
+            title=f"Click on the image to select a point (Frame {ann_frame_idx})",
+        )
+        print(f"Clicked point: ({x}, {y})")
 
     if use_negative_prompt:
-        # Get negative prompt as click
-        neg_x, neg_y = get_user_point(
-            rgb_image=img,
-            title=f"Click on the image to select the NEGATIVE point (Frame {ann_frame_idx})",
-        )
-        print(f"Clicked point: ({neg_x}, {neg_y})")
+        if negative_prompt_x is not None and negative_prompt_y is not None:
+            neg_x, neg_y = negative_prompt_x, negative_prompt_y
+            print(f"Using provided negative point: ({neg_x}, {neg_y})")
+        else:
+            # Get negative prompt as click
+            neg_x, neg_y = get_user_point(
+                rgb_image=img,
+                title=f"Click on the image to select the NEGATIVE point (Frame {ann_frame_idx})",
+            )
+            print(f"Clicked point: ({neg_x}, {neg_y})")
 
         points = np.array([[x, y], [neg_x, neg_y]], dtype=np.float32)
 
         # for labels, `1` means positive click and `0` means negative click
         labels = np.array([1, 0], dtype=np.int32)
     elif use_second_prompt:
-        # Get second prompt as click
-        second_x, second_y = get_user_point(
-            rgb_image=img,
-            title=f"Click on the image to select the SECOND point (Frame {ann_frame_idx})",
-        )
+        if second_prompt_x is not None and second_prompt_y is not None:
+            second_x, second_y = second_prompt_x, second_prompt_y
+            print(f"Using provided second point: ({second_x}, {second_y})")
+        else:
+            # Get second prompt as click
+            second_x, second_y = get_user_point(
+                rgb_image=img,
+                title=f"Click on the image to select the SECOND point (Frame {ann_frame_idx})",
+            )
         print(f"Clicked point: ({second_x}, {second_y})")
 
         points = np.array([[x, y], [second_x, second_y]], dtype=np.float32)
@@ -260,18 +278,37 @@ def main(
             plt.show()
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_dir", required=True, type=Path)
     parser.add_argument("--output_dir", required=True, type=Path)
+
+    # Flags to ask user to select more than one point
     parser.add_argument("--use_negative_prompt", action="store_true")
     parser.add_argument("--use_second_prompt", action="store_true")
+
+    # Coordinates for the prompt to be passed in without user interaction
+    parser.add_argument("--prompt_x", type=int, default=None, help="X coordinate of the prompt")
+    parser.add_argument("--prompt_y", type=int, default=None, help="Y coordinate of the prompt")
+    parser.add_argument("--negative_prompt_x", type=int, default=None, help="X coordinate of the negative prompt")
+    parser.add_argument("--negative_prompt_y", type=int, default=None, help="Y coordinate of the negative prompt")
+    parser.add_argument("--second_prompt_x", type=int, default=None, help="X coordinate of the second prompt")
+    parser.add_argument("--second_prompt_y", type=int, default=None, help="Y coordinate of the second prompt")
     parser.add_argument("--visualize", action="store_true")
     args = parser.parse_args()
-    main(
+    run_video_sam2(
         input_dir=args.input_dir,
         output_dir=args.output_dir,
         use_negative_prompt=args.use_negative_prompt,
         use_second_prompt=args.use_second_prompt,
+        prompt_x=args.prompt_x,
+        prompt_y=args.prompt_y,
+        negative_prompt_x=args.negative_prompt_x,
+        negative_prompt_y=args.negative_prompt_y,
+        second_prompt_x=args.second_prompt_x,
+        second_prompt_y=args.second_prompt_y,
         visualize=args.visualize,
     )
+
+if __name__ == "__main__":
+    main()
