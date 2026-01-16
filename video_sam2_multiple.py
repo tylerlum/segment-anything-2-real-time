@@ -32,7 +32,7 @@ def run_video_sam2(
             negative_prompt_y=negative_prompt_y,
             second_prompt_x=second_prompt_x,
             second_prompt_y=second_prompt_y,
-            visualize=True,
+            visualize=visualize,
         )
     else:
         cmd = (
