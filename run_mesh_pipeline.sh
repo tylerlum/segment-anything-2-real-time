@@ -23,7 +23,8 @@ python run_inference.py \
 # Create video of mesh
 sam2_ros_env
 python create_mesh_video.py \
---mesh-filepath $OUTPUT_DIR/mesh/mesh.obj 
+--mesh-filepath $OUTPUT_DIR/mesh/mesh.obj \
+--output_video_path $OUTPUT_DIR/mesh_orbit.mp4
 
 # Get masks of handle and head
 python video_sam2.py \
