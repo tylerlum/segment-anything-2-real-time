@@ -99,6 +99,66 @@ def transform_points(T: np.ndarray, pts: np.ndarray) -> np.ndarray:
     return (pts @ R.T) + t[None, :]
 
 
+def compute_oriented_bounding_box(
+    points: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Tuple[float, float, float, float]]:
+    """
+    Compute the oriented bounding box (OBB) that best fits a point cloud using PCA.
+    
+    Args:
+        points: (N, 3) point cloud
+    
+    Returns:
+        center: (3,) center of the bounding box in world frame
+        size: (3,) dimensions of the bounding box (x, y, z) where x is the longest axis
+        T_W_OBB: (4, 4) transformation matrix (world from OBB frame)
+        quaternion: (w, x, y, z) orientation of the bounding box
+    """
+    # Center the points
+    center = np.mean(points, axis=0)
+    centered_points = points - center
+    
+    # Compute covariance matrix and PCA
+    cov = np.cov(centered_points.T)
+    eigenvalues, eigenvectors = np.linalg.eigh(cov)
+    
+    # Sort by eigenvalues (largest first) - these become x, y, z axes
+    sort_idx = np.argsort(eigenvalues)[::-1]
+    eigenvalues = eigenvalues[sort_idx]
+    eigenvectors = eigenvectors[:, sort_idx]
+    
+    # Ensure right-handed coordinate system
+    if np.linalg.det(eigenvectors) < 0:
+        eigenvectors[:, 2] = -eigenvectors[:, 2]
+    
+    # Transform points to OBB frame to get extents
+    points_in_obb = centered_points @ eigenvectors
+    
+    # Get min/max along each axis
+    min_coords = points_in_obb.min(axis=0)
+    max_coords = points_in_obb.max(axis=0)
+    
+    # Size is the extent along each axis
+    size = max_coords - min_coords
+    
+    # Adjust center to be at the center of the bounding box (not centroid of points)
+    obb_center_in_obb_frame = (min_coords + max_coords) / 2
+    center = center + eigenvectors @ obb_center_in_obb_frame
+    
+    # Build rotation matrix (columns are OBB axes in world frame)
+    R_W_OBB = eigenvectors  # Already column vectors
+    
+    # Build 4x4 transform
+    T_W_OBB = np.eye(4)
+    T_W_OBB[:3, :3] = R_W_OBB
+    T_W_OBB[:3, 3] = center
+    
+    # Convert to quaternion
+    quaternion = rotation_matrix_to_quaternion(R_W_OBB)
+    
+    return center, size, T_W_OBB, quaternion
+
+
 def rotation_matrix_to_quaternion(R: np.ndarray) -> Tuple[float, float, float, float]:
     """
     Convert a 3x3 rotation matrix to quaternion (w, x, y, z).
@@ -407,33 +467,55 @@ def process_mesh(config: ProcessMeshConfig) -> None:
 
     # Add adjusted object origin
     if len(handle_points) > 0 and len(head_points) > 0:
-        handle_origin = np.mean(handle_points, axis=0)
+        handle_centroid = np.mean(handle_points, axis=0)
         head_origin = np.mean(head_points, axis=0)
 
-        # Compute handle frame (x-axis points from handle to head)
-        T_W_H, (qw, qx, qy, qz) = compute_handle_frame(handle_origin, head_origin)
+        # Compute oriented bounding box (OBB) for handle points using PCA
+        # This gives the tightest-fitting box regardless of orientation
+        obb_center, obb_size, T_W_OBB, (obb_qw, obb_qx, obb_qy, obb_qz) = compute_oriented_bounding_box(handle_points)
+        
+        print(f"Handle OBB center: {obb_center}")
+        print(f"Handle OBB size (x, y, z - sorted by length): {obb_size}")
+        print("Handle OBB axes (columns of rotation matrix):")
+        print(f"  X-axis (longest): {T_W_OBB[:3, 0]}")
+        print(f"  Y-axis (middle):  {T_W_OBB[:3, 1]}")
+        print(f"  Z-axis (shortest): {T_W_OBB[:3, 2]}")
+
+        # Visualize the OBB frame
+        server.scene.add_frame(
+            "/handle_obb_frame",
+            wxyz=(obb_qw, obb_qx, obb_qy, obb_qz),
+            position=obb_center,
+            axes_length=0.1,
+            axes_radius=0.01,
+        )
+        
+        # Visualize the handle OBB in viser
+        server.scene.add_box(
+            "/handle_obb",
+            color=(255, 0, 0),  # Red
+            dimensions=obb_size,
+            position=obb_center,
+            wxyz=(obb_qw, obb_qx, obb_qy, obb_qz),
+            visible=True,
+        )
+        print("Added handle OBB to viser")
+
+        # Also compute handle frame (x-axis points from handle to head) for mesh transformation
+        T_W_H, (qw, qx, qy, qz) = compute_handle_frame(handle_centroid, head_origin)
         
         # Inverse transform: T_H_W (handle from world) - to transform mesh into handle frame
         T_H_W = np.linalg.inv(T_W_H)
-        
-        # Compute handle bounding box size in handle frame coordinates (x, y, z)
-        # Transform handle points to handle frame
-        handle_points_in_handle_frame = transform_points(T_H_W, handle_points)
-        # Get axis-aligned bounding box in handle frame
-        handle_min = handle_points_in_handle_frame.min(axis=0)
-        handle_max = handle_points_in_handle_frame.max(axis=0)
-        handle_bbox_size = handle_max - handle_min  # (3,) array: (x_size, y_size, z_size)
-        print(f"Handle bounding box size (x, y, z): {handle_bbox_size}")
 
         server.scene.add_frame(
             "/handle_frame",
             wxyz=(qw, qx, qy, qz),
-            position=handle_origin,
+            position=handle_centroid,
             axes_length=0.3,
             axes_radius=0.01,
         )
         x_axis = T_W_H[:3, 0]  # First column is x-axis
-        print(f"Handle frame origin: {handle_origin}")
+        print(f"Handle frame origin: {handle_centroid}")
         print(f"Head origin: {head_origin}")
         print(f"X-axis (handle->head): {x_axis}")
         
@@ -453,10 +535,15 @@ def process_mesh(config: ProcessMeshConfig) -> None:
         np.save(transform_path, T_W_H)
         print(f"Saved handle frame transform (T_W_H) to: {transform_path}")
 
-        # Also save the handle bounding box size in txt file with numpy
-        handle_bbox_size_path = output_dir / "handle_bbox_size.txt"
-        np.savetxt(handle_bbox_size_path, handle_bbox_size)
-        print(f"Saved handle bounding box size to: {handle_bbox_size_path}")
+        # Save the OBB transform
+        obb_transform_path = output_dir / "T_W_OBB.npy"
+        np.save(obb_transform_path, T_W_OBB)
+        print(f"Saved handle OBB transform (T_W_OBB) to: {obb_transform_path}")
+
+        # Save the handle OBB size
+        handle_obb_size_path = output_dir / "handle_obb_size.txt"
+        np.savetxt(handle_obb_size_path, obb_size)
+        print(f"Saved handle OBB size to: {handle_obb_size_path}")
 
         # Visualize transformed mesh in viser (at origin, for verification)
         vertices_transformed = np.array(mesh_transformed.vertices, dtype=np.float32)
@@ -470,16 +557,6 @@ def process_mesh(config: ProcessMeshConfig) -> None:
             visible=False,  # Hidden by default, can toggle in viser UI
         )
         print("Added transformed mesh to viser (hidden by default)")
-
-        # Visualize the handle bounding box in viser
-        server.scene.add_box(
-            "/handle_bbox",
-            color=(255, 0, 0),  # Red (int up to 255)
-            dimensions=handle_bbox_size,
-            position=handle_origin,
-            wxyz=(qw, qx, qy, qz),
-            visible=True,
-        )
     
     # Add coordinate frame at origin
     server.scene.add_frame("/world_frame", wxyz=(1, 0, 0, 0), position=(0, 0, 0), axes_length=0.1, axes_radius=0.01)
