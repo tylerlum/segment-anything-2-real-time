@@ -293,7 +293,7 @@ def process_mesh(config: ProcessMeshConfig) -> None:
         print("Added head point cloud to viser")
     
     # Add coordinate frame at origin
-    server.scene.add_frame("/world_frame", wxyz=(1, 0, 0, 0), position=(0, 0, 0), axes_length=0.1)
+    server.scene.add_frame("/world_frame", wxyz=(1, 0, 0, 0), position=(0, 0, 0), axes_length=0.1, axes_radius=0.01)
     
     # Add camera frustums for visualization
     for i in range(num_frames):
@@ -334,6 +334,7 @@ def process_mesh(config: ProcessMeshConfig) -> None:
             wxyz=(w, x, y, z),
             position=pos,
             axes_length=0.05,
+            axes_radius=0.01,
         )
     
     print("\nViser server running at: http://localhost:8080")
