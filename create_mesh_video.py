@@ -18,15 +18,13 @@ from PIL import Image
 @dataclass
 class MeshVideoConfig:
     """Configuration for mesh video generation."""
-    
-    mesh_filepath: Path = (
-        Path(__file__).parent / "example_data" / "woodblock_mesh" / "3DModel.obj"
-    )
+
+    mesh_filepath: Path
     """Path to the mesh file (.obj)"""
-    
-    output_video_path: Path | None = None
-    """Path to output video. If None, saves to same folder as mesh with name 'mesh_orbit.mp4'"""
-    
+
+    output_dir: Path
+    """Path to output directory"""
+
     image_width: int = 800
     """Width of rendered images"""
     
@@ -53,9 +51,7 @@ class MeshVideoConfig:
     
     def __post_init__(self) -> None:
         assert self.mesh_filepath.exists(), f"Mesh file not found: {self.mesh_filepath}"
-        if self.output_video_path is None:
-            self.output_video_path = self.mesh_filepath.parent / "mesh_orbit.mp4"
-
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
 def compute_camera_position(
     centroid: np.ndarray,
@@ -253,8 +249,8 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
     
     # Create directories for frames if saving
     if config.save_frames:
-        rgb_dir = config.output_video_path.parent / "rgb"
-        depth_dir = config.output_video_path.parent / "depth"
+        rgb_dir = config.output_dir / "rgb"
+        depth_dir = config.output_dir / "depth"
         rgb_dir.mkdir(parents=True, exist_ok=True)
         depth_dir.mkdir(parents=True, exist_ok=True)
         
@@ -263,7 +259,7 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
         
         # Save camera intrinsics
         K = get_camera_intrinsics(pl, config.image_width, config.image_height)
-        cam_K_path = config.output_video_path.parent / "cam_K.txt"
+        cam_K_path = config.output_dir / "cam_K.txt"
         np.savetxt(cam_K_path, K)
         print(f"Saved camera intrinsics to: {cam_K_path}")
         print(f"Camera intrinsic matrix K:\n{K}")
@@ -304,7 +300,7 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
     # Save camera poses as (N, 4, 4) numpy array
     if config.save_frames:
         cam_poses_array = np.stack(cam_poses, axis=0)  # (N, 4, 4)
-        cam_poses_path = config.output_video_path.parent / "cam_poses.npy"
+        cam_poses_path = config.output_dir / "cam_poses.npy"
         np.save(cam_poses_path, cam_poses_array)
         print(f"Saved camera poses to: {cam_poses_path}")
     
@@ -317,8 +313,8 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
         print(f"Saved depth frames to: {depth_dir}")
     
     # Create video using ffmpeg
-    print(f"Creating video at: {config.output_video_path}")
-    config.output_video_path.parent.mkdir(parents=True, exist_ok=True)
+    output_video_path = config.output_dir / "mesh_orbit.mp4"
+    print(f"Creating video at: {output_video_path}")
     
     # Use saved frames if available, otherwise use temp directory
     if config.save_frames:
@@ -331,7 +327,7 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
             "-crf", "18",  # High quality
-            str(config.output_video_path),
+            str(output_video_path),
         ]
         
         print(f"Running: {' '.join(ffmpeg_cmd)}")
@@ -359,7 +355,7 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
                 "-crf", "18",  # High quality
-                str(config.output_video_path),
+                str(output_video_path),
             ]
             
             print(f"Running: {' '.join(ffmpeg_cmd)}")
@@ -369,7 +365,7 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
                 print(f"ffmpeg stderr: {result.stderr}")
                 raise RuntimeError(f"ffmpeg failed with return code {result.returncode}")
     
-    print(f"Video saved to: {config.output_video_path}")
+    print(f"Video saved to: {output_video_path}")
     print(f"Duration: {config.num_frames / config.fps:.2f} seconds")
 
 
