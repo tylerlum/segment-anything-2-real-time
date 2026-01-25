@@ -291,6 +291,111 @@ def process_mesh(config: ProcessMeshConfig) -> None:
             point_size=config.point_size,
         )
         print("Added head point cloud to viser")
+
+    # Add adjusted object origin
+    if len(handle_points) > 0 and len(head_points) > 0:
+        # Assume that handle_origin is almost 0 for two directions, but nonzero for 1
+        # Want new x-direction to be the direction from handle_origin to head_origin
+        # Doesn't matter which way y and z are, but they should be aligned with the original axes
+        handle_origin = np.mean(handle_points, axis=0)
+        head_origin = np.mean(head_points, axis=0)
+
+        # X-axis: direction from handle to head
+        x_axis = head_origin - handle_origin
+        x_axis = x_axis / np.linalg.norm(x_axis)
+        
+        # Find which original axis is most perpendicular to x_axis
+        # to use as a reference for constructing y and z
+        world_axes = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
+        dots = [abs(np.dot(x_axis, ax)) for ax in world_axes]
+        # Pick the axis most perpendicular to x (smallest dot product)
+        perp_idx = np.argmin(dots)
+        ref_axis = world_axes[perp_idx]
+        
+        # Z-axis: perpendicular to x and reference axis
+        z_axis = np.cross(x_axis, ref_axis)
+        z_axis = z_axis / np.linalg.norm(z_axis)
+        
+        # Y-axis: perpendicular to x and z (right-hand rule)
+        y_axis = np.cross(z_axis, x_axis)
+        y_axis = y_axis / np.linalg.norm(y_axis)
+        
+        # Build rotation matrix (columns are the new axes in world frame)
+        R_W_H = np.column_stack([x_axis, y_axis, z_axis])  # World from Handle frame
+        
+        # Build 4x4 transform: T_W_H (world from handle)
+        T_W_H = np.eye(4)
+        T_W_H[:3, :3] = R_W_H
+        T_W_H[:3, 3] = handle_origin
+        
+        # Inverse transform: T_H_W (handle from world) - to transform mesh into handle frame
+        T_H_W = np.linalg.inv(T_W_H)
+        
+        # Convert rotation matrix to quaternion (wxyz) for viser
+        trace = np.trace(R_W_H)
+        if trace > 0:
+            s = 0.5 / np.sqrt(trace + 1.0)
+            qw = 0.25 / s
+            qx = (R_W_H[2, 1] - R_W_H[1, 2]) * s
+            qy = (R_W_H[0, 2] - R_W_H[2, 0]) * s
+            qz = (R_W_H[1, 0] - R_W_H[0, 1]) * s
+        else:
+            if R_W_H[0, 0] > R_W_H[1, 1] and R_W_H[0, 0] > R_W_H[2, 2]:
+                s = 2.0 * np.sqrt(1.0 + R_W_H[0, 0] - R_W_H[1, 1] - R_W_H[2, 2])
+                qw = (R_W_H[2, 1] - R_W_H[1, 2]) / s
+                qx = 0.25 * s
+                qy = (R_W_H[0, 1] + R_W_H[1, 0]) / s
+                qz = (R_W_H[0, 2] + R_W_H[2, 0]) / s
+            elif R_W_H[1, 1] > R_W_H[2, 2]:
+                s = 2.0 * np.sqrt(1.0 + R_W_H[1, 1] - R_W_H[0, 0] - R_W_H[2, 2])
+                qw = (R_W_H[0, 2] - R_W_H[2, 0]) / s
+                qx = (R_W_H[0, 1] + R_W_H[1, 0]) / s
+                qy = 0.25 * s
+                qz = (R_W_H[1, 2] + R_W_H[2, 1]) / s
+            else:
+                s = 2.0 * np.sqrt(1.0 + R_W_H[2, 2] - R_W_H[0, 0] - R_W_H[1, 1])
+                qw = (R_W_H[1, 0] - R_W_H[0, 1]) / s
+                qx = (R_W_H[0, 2] + R_W_H[2, 0]) / s
+                qy = (R_W_H[1, 2] + R_W_H[2, 1]) / s
+                qz = 0.25 * s
+
+        server.scene.add_frame(
+            "/handle_frame",
+            wxyz=(qw, qx, qy, qz),
+            position=handle_origin,
+            axes_length=0.1,
+            axes_radius=0.01,
+        )
+        print(f"Handle frame origin: {handle_origin}")
+        print(f"Head origin: {head_origin}")
+        print(f"X-axis (handle->head): {x_axis}")
+        
+        # Transform mesh to handle frame and save
+        mesh_transformed = mesh.copy()
+        mesh_transformed.apply_transform(T_H_W)
+        
+        # Save transformed mesh
+        transformed_mesh_path = output_dir / "mesh_handle_frame.obj"
+        mesh_transformed.export(transformed_mesh_path)
+        print(f"Saved transformed mesh to: {transformed_mesh_path}")
+        
+        # Also save the transform for reference
+        transform_path = output_dir / "T_W_H.npy"
+        np.save(transform_path, T_W_H)
+        print(f"Saved handle frame transform (T_W_H) to: {transform_path}")
+        
+        # Visualize transformed mesh in viser (at origin, for verification)
+        vertices_transformed = np.array(mesh_transformed.vertices, dtype=np.float32)
+        faces_transformed = np.array(mesh_transformed.faces, dtype=np.uint32)
+        server.scene.add_mesh_simple(
+            "/mesh_handle_frame",
+            vertices=vertices_transformed,
+            faces=faces_transformed,
+            color=(0.3, 0.7, 0.3),  # Green to distinguish
+            wireframe=False,
+            visible=False,  # Hidden by default, can toggle in viser UI
+        )
+        print("Added transformed mesh to viser (hidden by default)")
     
     # Add coordinate frame at origin
     server.scene.add_frame("/world_frame", wxyz=(1, 0, 0, 0), position=(0, 0, 0), axes_length=0.1, axes_radius=0.01)
