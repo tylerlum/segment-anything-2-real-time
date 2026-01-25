@@ -48,8 +48,8 @@ class MeshVideoConfig:
     background_color: str = "white"
     """Background color for rendering"""
     
-    save_frames: bool = False
-    """Whether to save individual frames as images"""
+    save_frames: bool = True
+    """Whether to save individual frames as images (rgb/ and depth/ directories)"""
     
     def __post_init__(self) -> None:
         assert self.mesh_filepath.exists(), f"Mesh file not found: {self.mesh_filepath}"
@@ -89,18 +89,61 @@ def compute_camera_position(
     return centroid + np.array([x, y, z])
 
 
+def compute_camera_extrinsics(
+    camera_pos: np.ndarray,
+    target_pos: np.ndarray,
+    up_vector: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute camera extrinsic matrix (world from camera transform, T_W_C).
+    
+    Args:
+        camera_pos: Camera position in world frame (3,)
+        target_pos: Look-at target position in world frame (3,)
+        up_vector: Up vector in world frame (3,)
+    
+    Returns:
+        T_W_C: (4, 4) transformation matrix (world from camera)
+    """
+    # Compute camera coordinate axes in world frame
+    # z-axis points from camera to target (forward)
+    z_axis = target_pos - camera_pos
+    z_axis = z_axis / np.linalg.norm(z_axis)
+    
+    # x-axis is perpendicular to z and up (right)
+    x_axis = np.cross(z_axis, up_vector)
+    x_axis = x_axis / np.linalg.norm(x_axis)
+    
+    # y-axis is perpendicular to z and x (down in camera convention)
+    y_axis = np.cross(z_axis, x_axis)
+    y_axis = y_axis / np.linalg.norm(y_axis)
+    
+    # Rotation matrix: columns are camera axes in world frame
+    R_W_C = np.column_stack([x_axis, y_axis, z_axis])
+    
+    # Build 4x4 transformation matrix
+    T_W_C = np.eye(4)
+    T_W_C[:3, :3] = R_W_C
+    T_W_C[:3, 3] = camera_pos
+    
+    return T_W_C
+
+
 def render_frame(
     plotter: pv.Plotter,
     centroid: np.ndarray,
     radius: float,
     azimuth_deg: float,
     elevation_deg: float,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Render a single frame with the camera at the specified position.
     
     Returns:
-        Image as numpy array (H, W, 3)
+        Tuple of (rgb_image, depth_image, T_W_C) as numpy arrays
+        - rgb_image: (H, W, 3) uint8
+        - depth_image: (H, W) float32 with depth values
+        - T_W_C: (4, 4) camera extrinsic matrix (world from camera)
     """
     camera_pos = compute_camera_position(centroid, radius, azimuth_deg, elevation_deg)
     target_pos = centroid
@@ -112,10 +155,52 @@ def render_frame(
         up_vector.tolist(),
     ]
     
+    # Compute camera extrinsics
+    T_W_C = compute_camera_extrinsics(camera_pos, target_pos, up_vector)
+    
     # Must call render() to update the scene before taking screenshot
     plotter.render()
     
-    return plotter.screenshot(transparent_background=False)
+    # Get RGB image
+    rgb = plotter.screenshot(transparent_background=False)
+    
+    # Get depth buffer (normalized 0-1, where 0 is near plane, 1 is far plane)
+    depth_buffer = plotter.get_image_depth()
+    
+    return rgb, depth_buffer, T_W_C
+
+
+def get_camera_intrinsics(plotter: pv.Plotter, width: int, height: int) -> np.ndarray:
+    """
+    Extract camera intrinsic matrix K from PyVista plotter.
+    
+    Returns:
+        K: (3, 3) camera intrinsic matrix
+    """
+    # Get the camera's vertical field of view in degrees
+    camera = plotter.camera
+    fov_y_deg = camera.view_angle  # Vertical FOV in degrees
+    fov_y_rad = np.radians(fov_y_deg)
+    
+    # Compute focal length in pixels
+    # f_y = height / (2 * tan(fov_y / 2))
+    f_y = height / (2.0 * np.tan(fov_y_rad / 2.0))
+    
+    # Assume square pixels (f_x = f_y)
+    f_x = f_y
+    
+    # Principal point at image center
+    c_x = width / 2.0
+    c_y = height / 2.0
+    
+    # Construct intrinsic matrix
+    K = np.array([
+        [f_x, 0.0, c_x],
+        [0.0, f_y, c_y],
+        [0.0, 0.0, 1.0],
+    ])
+    
+    return K
 
 
 def create_mesh_video(config: MeshVideoConfig) -> None:
@@ -145,56 +230,89 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
     pl.set_background(config.background_color)
     
     # Generate frames
-    frames = []
+    rgb_frames = []
+    cam_poses = []
     azimuth_angles = np.linspace(0, 360, config.num_frames, endpoint=False)
     
     print(f"Rendering {config.num_frames} frames...")
     
-    # Create temp directory for frames if saving
+    # Create directories for frames if saving
     if config.save_frames:
-        frames_dir = config.output_video_path.parent / "frames"
-        frames_dir.mkdir(parents=True, exist_ok=True)
+        rgb_dir = config.output_video_path.parent / "rgb"
+        depth_dir = config.output_video_path.parent / "depth"
+        rgb_dir.mkdir(parents=True, exist_ok=True)
+        depth_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Need to render once to initialize camera before extracting intrinsics
+        pl.render()
+        
+        # Save camera intrinsics
+        K = get_camera_intrinsics(pl, config.image_width, config.image_height)
+        cam_K_path = config.output_video_path.parent / "cam_K.txt"
+        np.savetxt(cam_K_path, K)
+        print(f"Saved camera intrinsics to: {cam_K_path}")
+        print(f"Camera intrinsic matrix K:\n{K}")
     
     for i, azimuth in enumerate(azimuth_angles):
         if (i + 1) % 10 == 0 or i == 0:
             print(f"  Frame {i + 1}/{config.num_frames} (azimuth: {azimuth:.1f}°)")
         
-        frame = render_frame(
+        rgb, depth_buffer, T_W_C = render_frame(
             pl,
             centroid,
             camera_radius,
             azimuth,
             config.elevation_angle,
         )
-        frames.append(frame)
+        rgb_frames.append(rgb)
+        cam_poses.append(T_W_C)
         
         if config.save_frames:
-            img = Image.fromarray(frame)
-            img.save(frames_dir / f"frame_{i:04d}.png")
+            # Save RGB image
+            rgb_img = Image.fromarray(rgb)
+            rgb_img.save(rgb_dir / f"frame_{i:04d}.png")
+            
+            # Convert depth to mm (uint16)
+            # depth_buffer contains actual depth values in world units (meters assumed)
+            # Convert to mm
+            depth_mm = depth_buffer * 1000.0
+            # Handle NaN/inf values (background pixels) - set to 0
+            depth_mm = np.nan_to_num(depth_mm, nan=0.0, posinf=65535.0, neginf=0.0)
+            # Clip to valid uint16 range (0-65535 mm = 0-65.535 m)
+            depth_mm = np.clip(depth_mm, 0, 65535)
+            depth_uint16 = depth_mm.astype(np.uint16)
+            
+            # Save as 16-bit PNG
+            depth_img = Image.fromarray(depth_uint16, mode='I;16')
+            depth_img.save(depth_dir / f"frame_{i:04d}.png")
+    
+    # Save camera poses as (N, 4, 4) numpy array
+    if config.save_frames:
+        cam_poses_array = np.stack(cam_poses, axis=0)  # (N, 4, 4)
+        cam_poses_path = config.output_video_path.parent / "cam_poses.npy"
+        np.save(cam_poses_path, cam_poses_array)
+        print(f"Saved camera poses to: {cam_poses_path}")
     
     pl.close()
     
-    print(f"Rendered {len(frames)} frames")
+    print(f"Rendered {len(rgb_frames)} frames")
+    
+    if config.save_frames:
+        print(f"Saved RGB frames to: {rgb_dir}")
+        print(f"Saved depth frames to: {depth_dir}")
     
     # Create video using ffmpeg
     print(f"Creating video at: {config.output_video_path}")
     config.output_video_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Write frames to temp directory and use ffmpeg
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = Path(tmpdir)
-        
-        # Save frames as images
-        for i, frame in enumerate(frames):
-            img = Image.fromarray(frame)
-            img.save(tmpdir / f"frame_{i:04d}.png")
-        
-        # Use ffmpeg to create video
+    # Use saved frames if available, otherwise use temp directory
+    if config.save_frames:
+        # Use the already saved RGB frames
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",  # Overwrite output
             "-framerate", str(config.fps),
-            "-i", str(tmpdir / "frame_%04d.png"),
+            "-i", str(rgb_dir / "frame_%04d.png"),
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
             "-crf", "18",  # High quality
@@ -207,6 +325,34 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
         if result.returncode != 0:
             print(f"ffmpeg stderr: {result.stderr}")
             raise RuntimeError(f"ffmpeg failed with return code {result.returncode}")
+    else:
+        # Write frames to temp directory and use ffmpeg
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            
+            # Save frames as images
+            for i, frame in enumerate(rgb_frames):
+                img = Image.fromarray(frame)
+                img.save(tmpdir / f"frame_{i:04d}.png")
+            
+            # Use ffmpeg to create video
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",  # Overwrite output
+                "-framerate", str(config.fps),
+                "-i", str(tmpdir / "frame_%04d.png"),
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-crf", "18",  # High quality
+                str(config.output_video_path),
+            ]
+            
+            print(f"Running: {' '.join(ffmpeg_cmd)}")
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"ffmpeg stderr: {result.stderr}")
+                raise RuntimeError(f"ffmpeg failed with return code {result.returncode}")
     
     print(f"Video saved to: {config.output_video_path}")
     print(f"Duration: {config.num_frames / config.fps:.2f} seconds")

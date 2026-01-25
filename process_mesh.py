@@ -296,7 +296,7 @@ def process_mesh(config: ProcessMeshConfig) -> None:
     server.scene.add_frame("/world_frame", wxyz=(1, 0, 0, 0), position=(0, 0, 0), axes_length=0.1)
     
     # Add camera frustums for visualization
-    for i in range(min(num_frames, 10)):  # Show first 10 cameras
+    for i in range(num_frames):
         T_W_C = cam_poses[i]
         pos = T_W_C[:3, 3]
         # Convert rotation matrix to quaternion (wxyz)
