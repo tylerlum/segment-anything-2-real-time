@@ -263,8 +263,10 @@ def run_video_sam2(
 
         mask_img = np.zeros((height, width, 3))
         mask_img[mask > 0] = [255, 255, 255]  # object is in white
+        filename = jpg_filepaths[out_frame_idx].stem
         cv2.imwrite(
-            str(output_dir / f"{out_frame_idx:05d}.png"),
+            # str(output_dir / f"{out_frame_idx:05d}.png"),
+            str(output_dir / f"{filename}.png"),
             mask_img,
         )
 
