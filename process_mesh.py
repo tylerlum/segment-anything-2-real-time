@@ -204,12 +204,34 @@ def load_mask(path: Path) -> np.ndarray:
     return mask > 0  # Convert to boolean
 
 
+def save_mesh(mesh: trimesh.Trimesh, name: str, parent_dir: Path):
+    """
+    Converts a vertex-colored mesh to a textured mesh (obj+mtl+png)
+    and saves it in its own subdirectory to avoid file conflicts.
+    """
+    # 1. Create a subdirectory for this specific mesh
+    # e.g. output/original_mesh/
+    save_dir = parent_dir / name
+    save_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 2. Export as .glb
+    file_path = save_dir / f"{name}.glb"
+    mesh.export(file_path)
+
+    # 3. Export as .obj
+    # This will produce: '{name}.obj', 'material_0.mtl', 'material_0.png'
+    new_mesh = trimesh.load(file_path)
+    new_mesh.export(save_dir / f"{name}.obj", file_type="obj")
+    return file_path
+
+
+
 @dataclass
 class ProcessMeshConfig:
     """Configuration for mesh processing."""
     
     output_dir: Path
-    """Directory containing mesh.obj, rgb/, depth/, cam_K.txt, handle_masks/, head_masks/, cam_poses.npy"""
+    """Directory containing mesh/mesh.obj, rgb/, depth/, cam_K.txt, handle_masks/, head_masks/, cam_poses.npy"""
     
     point_size: float = 0.002
     """Point size for visualization"""
@@ -231,7 +253,7 @@ def process_mesh(config: ProcessMeshConfig) -> None:
     output_dir = config.output_dir
     
     # Check required files/directories exist
-    mesh_path = output_dir / "mesh.obj"
+    mesh_path = output_dir / "mesh" / "mesh.obj"
     rgb_dir = output_dir / "rgb"
     depth_dir = output_dir / "depth"
     handle_masks_dir = output_dir / "handle_masks"
@@ -411,9 +433,11 @@ def process_mesh(config: ProcessMeshConfig) -> None:
         mesh_transformed.apply_transform(T_H_W)
         
         # Save transformed mesh
-        transformed_mesh_path = output_dir / "mesh_handle_frame.obj"
-        mesh_transformed.export(transformed_mesh_path)
-        print(f"Saved transformed mesh to: {transformed_mesh_path}")
+        save_mesh(
+            mesh=mesh_transformed,
+            name="mesh_handle_frame",
+            parent_dir=output_dir,
+        )
         
         # Also save the transform for reference
         transform_path = output_dir / "T_W_H.npy"
