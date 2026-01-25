@@ -99,6 +99,97 @@ def transform_points(T: np.ndarray, pts: np.ndarray) -> np.ndarray:
     return (pts @ R.T) + t[None, :]
 
 
+def rotation_matrix_to_quaternion(R: np.ndarray) -> Tuple[float, float, float, float]:
+    """
+    Convert a 3x3 rotation matrix to quaternion (w, x, y, z).
+    
+    Args:
+        R: (3, 3) rotation matrix
+    
+    Returns:
+        Tuple of (w, x, y, z) quaternion components
+    """
+    trace = np.trace(R)
+    if trace > 0:
+        s = 0.5 / np.sqrt(trace + 1.0)
+        w = 0.25 / s
+        x = (R[2, 1] - R[1, 2]) * s
+        y = (R[0, 2] - R[2, 0]) * s
+        z = (R[1, 0] - R[0, 1]) * s
+    else:
+        if R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+            s = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+            w = (R[2, 1] - R[1, 2]) / s
+            x = 0.25 * s
+            y = (R[0, 1] + R[1, 0]) / s
+            z = (R[0, 2] + R[2, 0]) / s
+        elif R[1, 1] > R[2, 2]:
+            s = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+            w = (R[0, 2] - R[2, 0]) / s
+            x = (R[0, 1] + R[1, 0]) / s
+            y = 0.25 * s
+            z = (R[1, 2] + R[2, 1]) / s
+        else:
+            s = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+            w = (R[1, 0] - R[0, 1]) / s
+            x = (R[0, 2] + R[2, 0]) / s
+            y = (R[1, 2] + R[2, 1]) / s
+            z = 0.25 * s
+    return (w, x, y, z)
+
+
+def compute_handle_frame(
+    handle_origin: np.ndarray,
+    head_origin: np.ndarray,
+) -> Tuple[np.ndarray, Tuple[float, float, float, float]]:
+    """
+    Compute a coordinate frame with origin at handle_origin and x-axis pointing toward head_origin.
+    
+    The y and z axes are constructed to be orthogonal to x while staying as aligned
+    as possible with the original world axes.
+    
+    Args:
+        handle_origin: (3,) position of handle centroid
+        head_origin: (3,) position of head centroid
+    
+    Returns:
+        T_W_H: (4, 4) transformation matrix (world from handle frame)
+        quaternion: (w, x, y, z) quaternion representing the orientation
+    """
+    # X-axis: direction from handle to head
+    x_axis = head_origin - handle_origin
+    x_axis = x_axis / np.linalg.norm(x_axis)
+    
+    # Find which original axis is most perpendicular to x_axis
+    # to use as a reference for constructing y and z
+    world_axes = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
+    dots = [abs(np.dot(x_axis, ax)) for ax in world_axes]
+    # Pick the axis most perpendicular to x (smallest dot product)
+    perp_idx = np.argmin(dots)
+    ref_axis = world_axes[perp_idx]
+    
+    # Z-axis: perpendicular to x and reference axis
+    z_axis = np.cross(x_axis, ref_axis)
+    z_axis = z_axis / np.linalg.norm(z_axis)
+    
+    # Y-axis: perpendicular to x and z (right-hand rule)
+    y_axis = np.cross(z_axis, x_axis)
+    y_axis = y_axis / np.linalg.norm(y_axis)
+    
+    # Build rotation matrix (columns are the new axes in world frame)
+    R_W_H = np.column_stack([x_axis, y_axis, z_axis])  # World from Handle frame
+    
+    # Build 4x4 transform: T_W_H (world from handle)
+    T_W_H = np.eye(4)
+    T_W_H[:3, :3] = R_W_H
+    T_W_H[:3, 3] = handle_origin
+    
+    # Convert rotation matrix to quaternion
+    quaternion = rotation_matrix_to_quaternion(R_W_H)
+    
+    return T_W_H, quaternion
+
+
 def load_image(path: Path) -> np.ndarray:
     """Load image as numpy array."""
     return np.array(Image.open(path))
@@ -294,78 +385,23 @@ def process_mesh(config: ProcessMeshConfig) -> None:
 
     # Add adjusted object origin
     if len(handle_points) > 0 and len(head_points) > 0:
-        # Assume that handle_origin is almost 0 for two directions, but nonzero for 1
-        # Want new x-direction to be the direction from handle_origin to head_origin
-        # Doesn't matter which way y and z are, but they should be aligned with the original axes
         handle_origin = np.mean(handle_points, axis=0)
         head_origin = np.mean(head_points, axis=0)
-
-        # X-axis: direction from handle to head
-        x_axis = head_origin - handle_origin
-        x_axis = x_axis / np.linalg.norm(x_axis)
         
-        # Find which original axis is most perpendicular to x_axis
-        # to use as a reference for constructing y and z
-        world_axes = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
-        dots = [abs(np.dot(x_axis, ax)) for ax in world_axes]
-        # Pick the axis most perpendicular to x (smallest dot product)
-        perp_idx = np.argmin(dots)
-        ref_axis = world_axes[perp_idx]
-        
-        # Z-axis: perpendicular to x and reference axis
-        z_axis = np.cross(x_axis, ref_axis)
-        z_axis = z_axis / np.linalg.norm(z_axis)
-        
-        # Y-axis: perpendicular to x and z (right-hand rule)
-        y_axis = np.cross(z_axis, x_axis)
-        y_axis = y_axis / np.linalg.norm(y_axis)
-        
-        # Build rotation matrix (columns are the new axes in world frame)
-        R_W_H = np.column_stack([x_axis, y_axis, z_axis])  # World from Handle frame
-        
-        # Build 4x4 transform: T_W_H (world from handle)
-        T_W_H = np.eye(4)
-        T_W_H[:3, :3] = R_W_H
-        T_W_H[:3, 3] = handle_origin
+        # Compute handle frame (x-axis points from handle to head)
+        T_W_H, (qw, qx, qy, qz) = compute_handle_frame(handle_origin, head_origin)
         
         # Inverse transform: T_H_W (handle from world) - to transform mesh into handle frame
         T_H_W = np.linalg.inv(T_W_H)
-        
-        # Convert rotation matrix to quaternion (wxyz) for viser
-        trace = np.trace(R_W_H)
-        if trace > 0:
-            s = 0.5 / np.sqrt(trace + 1.0)
-            qw = 0.25 / s
-            qx = (R_W_H[2, 1] - R_W_H[1, 2]) * s
-            qy = (R_W_H[0, 2] - R_W_H[2, 0]) * s
-            qz = (R_W_H[1, 0] - R_W_H[0, 1]) * s
-        else:
-            if R_W_H[0, 0] > R_W_H[1, 1] and R_W_H[0, 0] > R_W_H[2, 2]:
-                s = 2.0 * np.sqrt(1.0 + R_W_H[0, 0] - R_W_H[1, 1] - R_W_H[2, 2])
-                qw = (R_W_H[2, 1] - R_W_H[1, 2]) / s
-                qx = 0.25 * s
-                qy = (R_W_H[0, 1] + R_W_H[1, 0]) / s
-                qz = (R_W_H[0, 2] + R_W_H[2, 0]) / s
-            elif R_W_H[1, 1] > R_W_H[2, 2]:
-                s = 2.0 * np.sqrt(1.0 + R_W_H[1, 1] - R_W_H[0, 0] - R_W_H[2, 2])
-                qw = (R_W_H[0, 2] - R_W_H[2, 0]) / s
-                qx = (R_W_H[0, 1] + R_W_H[1, 0]) / s
-                qy = 0.25 * s
-                qz = (R_W_H[1, 2] + R_W_H[2, 1]) / s
-            else:
-                s = 2.0 * np.sqrt(1.0 + R_W_H[2, 2] - R_W_H[0, 0] - R_W_H[1, 1])
-                qw = (R_W_H[1, 0] - R_W_H[0, 1]) / s
-                qx = (R_W_H[0, 2] + R_W_H[2, 0]) / s
-                qy = (R_W_H[1, 2] + R_W_H[2, 1]) / s
-                qz = 0.25 * s
 
         server.scene.add_frame(
             "/handle_frame",
             wxyz=(qw, qx, qy, qz),
             position=handle_origin,
-            axes_length=0.1,
+            axes_length=0.3,
             axes_radius=0.01,
         )
+        x_axis = T_W_H[:3, 0]  # First column is x-axis
         print(f"Handle frame origin: {handle_origin}")
         print(f"Head origin: {head_origin}")
         print(f"X-axis (handle->head): {x_axis}")
@@ -404,39 +440,12 @@ def process_mesh(config: ProcessMeshConfig) -> None:
     for i in range(num_frames):
         T_W_C = cam_poses[i]
         pos = T_W_C[:3, 3]
-        # Convert rotation matrix to quaternion (wxyz)
         R = T_W_C[:3, :3]
-        # Simple rotation matrix to quaternion conversion
-        trace = np.trace(R)
-        if trace > 0:
-            s = 0.5 / np.sqrt(trace + 1.0)
-            w = 0.25 / s
-            x = (R[2, 1] - R[1, 2]) * s
-            y = (R[0, 2] - R[2, 0]) * s
-            z = (R[1, 0] - R[0, 1]) * s
-        else:
-            if R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
-                s = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
-                w = (R[2, 1] - R[1, 2]) / s
-                x = 0.25 * s
-                y = (R[0, 1] + R[1, 0]) / s
-                z = (R[0, 2] + R[2, 0]) / s
-            elif R[1, 1] > R[2, 2]:
-                s = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
-                w = (R[0, 2] - R[2, 0]) / s
-                x = (R[0, 1] + R[1, 0]) / s
-                y = 0.25 * s
-                z = (R[1, 2] + R[2, 1]) / s
-            else:
-                s = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
-                w = (R[1, 0] - R[0, 1]) / s
-                x = (R[0, 2] + R[2, 0]) / s
-                y = (R[1, 2] + R[2, 1]) / s
-                z = 0.25 * s
+        wxyz = rotation_matrix_to_quaternion(R)
         
         server.scene.add_frame(
             f"/cameras/camera_{i:04d}",
-            wxyz=(w, x, y, z),
+            wxyz=wxyz,
             position=pos,
             axes_length=0.05,
             axes_radius=0.01,
