@@ -2,8 +2,8 @@
 source ~/.zshrc
 
 # Get directory with rgb and depth directories
-export DEMO_DIR=/juno/u/kedia/FoundationPose/human_videos/Jan_17/hammer/toy_hammer/down_swing/
-export OUTPUT_DIR=/home/tylerlum/github_repos/sam-3d-objects/outputs/toy_hammer/down_swing
+export DEMO_DIR=/juno/u/kedia/FoundationPose/human_videos/Jan_17/brush/red_brush/sweep_forward/
+export OUTPUT_DIR=/home/tylerlum/github_repos/sam-3d-objects/outputs/red_brush/sweep_forward
 
 # Run sam2 to get the object mask (only need on first frame, but can do on all)
 sam2_ros_env

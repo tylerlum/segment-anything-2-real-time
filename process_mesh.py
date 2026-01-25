@@ -380,7 +380,7 @@ def process_mesh(config: ProcessMeshConfig) -> None:
         "/mesh",
         vertices=vertices,
         faces=faces,
-        color=(0.7, 0.7, 0.7),  # Light gray base color
+        color=(180, 180, 180),  # Light gray base color (int up to 255)
         wireframe=False,
     )
     print(f"Added mesh to viser ({len(vertices)} vertices, {len(faces)} faces)")
@@ -409,12 +409,21 @@ def process_mesh(config: ProcessMeshConfig) -> None:
     if len(handle_points) > 0 and len(head_points) > 0:
         handle_origin = np.mean(handle_points, axis=0)
         head_origin = np.mean(head_points, axis=0)
-        
+
         # Compute handle frame (x-axis points from handle to head)
         T_W_H, (qw, qx, qy, qz) = compute_handle_frame(handle_origin, head_origin)
         
         # Inverse transform: T_H_W (handle from world) - to transform mesh into handle frame
         T_H_W = np.linalg.inv(T_W_H)
+        
+        # Compute handle bounding box size in handle frame coordinates (x, y, z)
+        # Transform handle points to handle frame
+        handle_points_in_handle_frame = transform_points(T_H_W, handle_points)
+        # Get axis-aligned bounding box in handle frame
+        handle_min = handle_points_in_handle_frame.min(axis=0)
+        handle_max = handle_points_in_handle_frame.max(axis=0)
+        handle_bbox_size = handle_max - handle_min  # (3,) array: (x_size, y_size, z_size)
+        print(f"Handle bounding box size (x, y, z): {handle_bbox_size}")
 
         server.scene.add_frame(
             "/handle_frame",
@@ -443,7 +452,12 @@ def process_mesh(config: ProcessMeshConfig) -> None:
         transform_path = output_dir / "T_W_H.npy"
         np.save(transform_path, T_W_H)
         print(f"Saved handle frame transform (T_W_H) to: {transform_path}")
-        
+
+        # Also save the handle bounding box size in txt file with numpy
+        handle_bbox_size_path = output_dir / "handle_bbox_size.txt"
+        np.savetxt(handle_bbox_size_path, handle_bbox_size)
+        print(f"Saved handle bounding box size to: {handle_bbox_size_path}")
+
         # Visualize transformed mesh in viser (at origin, for verification)
         vertices_transformed = np.array(mesh_transformed.vertices, dtype=np.float32)
         faces_transformed = np.array(mesh_transformed.faces, dtype=np.uint32)
@@ -451,11 +465,21 @@ def process_mesh(config: ProcessMeshConfig) -> None:
             "/mesh_handle_frame",
             vertices=vertices_transformed,
             faces=faces_transformed,
-            color=(0.3, 0.7, 0.3),  # Green to distinguish
+            color=(51, 179, 51),  # Green to distinguish (int up to 255)
             wireframe=False,
             visible=False,  # Hidden by default, can toggle in viser UI
         )
         print("Added transformed mesh to viser (hidden by default)")
+
+        # Visualize the handle bounding box in viser
+        server.scene.add_box(
+            "/handle_bbox",
+            color=(255, 0, 0),  # Red (int up to 255)
+            dimensions=handle_bbox_size,
+            position=handle_origin,
+            wxyz=(qw, qx, qy, qz),
+            visible=True,
+        )
     
     # Add coordinate frame at origin
     server.scene.add_frame("/world_frame", wxyz=(1, 0, 0, 0), position=(0, 0, 0), axes_length=0.1, axes_radius=0.01)
