@@ -142,7 +142,7 @@ def render_frame(
     Returns:
         Tuple of (rgb_image, depth_image, T_W_C) as numpy arrays
         - rgb_image: (H, W, 3) uint8
-        - depth_image: (H, W) float32 with depth values
+        - depth_image: (H, W) float32 with depth values in world units (meters)
         - T_W_C: (4, 4) camera extrinsic matrix (world from camera)
     """
     camera_pos = compute_camera_position(centroid, radius, azimuth_deg, elevation_deg)
@@ -164,10 +164,25 @@ def render_frame(
     # Get RGB image
     rgb = plotter.screenshot(transparent_background=False)
     
-    # Get depth buffer (normalized 0-1, where 0 is near plane, 1 is far plane)
-    depth_buffer = plotter.get_image_depth()
+    # Get depth buffer - returns z-buffer values in NDC (normalized device coordinates)
+    # These are NOT actual depth values, need to convert using clipping planes
+    z_buffer = np.array(plotter.get_image_depth())
     
-    return rgb, depth_buffer, T_W_C
+    # Get camera clipping range (near, far)
+    near, far = plotter.camera.clipping_range
+    
+    # Convert z-buffer (NDC) to linear depth
+    # z_buffer is in range [-1, 1] where -1 is near plane, 1 is far plane (OpenGL convention)
+    # But PyVista may return values outside this range for background (NaN or very negative)
+    # Linear depth formula: depth = 2 * near * far / (far + near - z_ndc * (far - near))
+    # However, get_image_depth() returns values that need different handling
+    
+    # Actually, get_image_depth() returns the actual z-distance from camera in world units
+    # but with negative values (camera looks down -z in its local frame)
+    # The NaN values are for background pixels
+    depth = -z_buffer  # Flip sign to get positive depth
+    
+    return rgb, depth, T_W_C
 
 
 def get_camera_intrinsics(plotter: pv.Plotter, width: int, height: int) -> np.ndarray:
