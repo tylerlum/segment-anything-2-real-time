@@ -27,13 +27,13 @@ python create_mesh_video.py \
 
 # Get masks of handle and head
 python video_sam2.py \
---input_dir $OUTPUT_DIR/rgb/ \
---output_dir $OUTPUT_DIR/handle_masks/ \
+--input_dir $DEMO_DIR/rgb/ \
+--output_dir $DEMO_DIR/handle_masks/ \
 --use_negative_prompt  
 
 python video_sam2.py \
---input_dir $OUTPUT_DIR/rgb/ \
---output_dir $OUTPUT_DIR/head_masks/ \
+--input_dir $DEMO_DIR/rgb/ \
+--output_dir $DEMO_DIR/head_masks/ \
 --use_negative_prompt  
 
 # Create modified mesh
