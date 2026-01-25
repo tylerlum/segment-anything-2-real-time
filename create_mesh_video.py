@@ -237,7 +237,25 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
     
     # Initialize PyVista plotter
     pl = pv.Plotter(off_screen=True, window_size=[config.image_width, config.image_height])
-    pl.import_obj(str(config.mesh_filepath))
+    
+    # Load mesh with textures
+    # The MTL file is typically named "material.mtl" in the same directory
+    mesh_filepath = config.mesh_filepath
+    mesh_dir = mesh_filepath.parent
+    mtl_filepath = mesh_dir / "material.mtl"
+    
+    if mtl_filepath.exists():
+        print(f"Found MTL file: {mtl_filepath}")
+        # PyVista's import_obj only takes filename_mtl, not texture_path
+        # It will look for textures relative to the MTL file location
+        pl.import_obj(
+            str(mesh_filepath),
+            filename_mtl=str(mtl_filepath),
+        )
+    else:
+        print("No MTL file found, loading OBJ without textures")
+        pl.import_obj(str(mesh_filepath))
+    
     pl.set_background(config.background_color)
     
     # Generate frames
