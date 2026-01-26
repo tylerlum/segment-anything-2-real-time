@@ -245,6 +245,46 @@ class ProcessMeshConfig:
     def __post_init__(self) -> None:
         assert self.output_dir.exists(), f"Output directory not found: {self.output_dir}"
 
+def visualize_bbox(server: viser.ViserServer, bbox_size: np.ndarray, position: np.ndarray, wxyz: np.ndarray, name: str, radius: float = 0.01, color: Tuple[int, int, int] = (255, 0, 0)) -> None:
+    # Visualize the bounding box in viser
+    server.scene.add_frame(
+        f"/{name}",
+        wxyz=wxyz,
+        position=position,
+        axes_length=0.3,
+        axes_radius=0.01,
+    )
+    server.scene.add_box(
+        f"/{name}/bbox",
+        color=color,
+        dimensions=bbox_size,
+        visible=True,
+    )
+    # Add spheres at the corners of the handle bounding box
+    # Define corner offsets in handle frame (bbox centered at origin)
+    half_size = bbox_size / 2
+    corner_offsets = np.array([
+        [-half_size[0], -half_size[1], -half_size[2]],
+        [-half_size[0], -half_size[1], +half_size[2]],
+        [-half_size[0], +half_size[1], -half_size[2]],
+        [-half_size[0], +half_size[1], +half_size[2]],
+        [+half_size[0], -half_size[1], -half_size[2]],
+        [+half_size[0], -half_size[1], +half_size[2]],
+        [+half_size[0], +half_size[1], -half_size[2]],
+        [+half_size[0], +half_size[1], +half_size[2]],
+    ])
+    
+    for i, offset in enumerate(corner_offsets):
+        # Create a small sphere
+        sphere = trimesh.creation.icosphere(subdivisions=2, radius=radius)
+        
+        server.scene.add_mesh_simple(
+            f"/{name}/bbox_corner_{i}",
+            vertices=sphere.vertices,
+            faces=sphere.faces,
+            color=color,
+            position=offset,
+        )
 
 def process_mesh(config: ProcessMeshConfig) -> None:
     """
@@ -393,17 +433,11 @@ def process_mesh(config: ProcessMeshConfig) -> None:
     server = viser.ViserServer()
     
     # Add mesh
-    vertices = np.array(mesh.vertices, dtype=np.float32)
-    faces = np.array(mesh.faces, dtype=np.uint32)
-    
-    server.scene.add_mesh_simple(
+    server.scene.add_mesh_trimesh(
         "/mesh",
-        vertices=vertices,
-        faces=faces,
-        color=(180, 180, 180),  # Light gray base color (int up to 255)
-        wireframe=False,
+        mesh=mesh,
     )
-    print(f"Added mesh to viser ({len(vertices)} vertices, {len(faces)} faces)")
+    print("Added mesh to viser")
     
     # Add handle point cloud
     if len(handle_points) > 0:
@@ -479,26 +513,21 @@ def process_mesh(config: ProcessMeshConfig) -> None:
         print(f"Saved handle bounding box size to: {handle_bbox_size_path}")
 
         # Visualize transformed mesh in viser (at origin, for verification)
-        vertices_transformed = np.array(mesh_transformed.vertices, dtype=np.float32)
-        faces_transformed = np.array(mesh_transformed.faces, dtype=np.uint32)
-        server.scene.add_mesh_simple(
+        server.scene.add_mesh_trimesh(
             "/mesh_handle_frame",
-            vertices=vertices_transformed,
-            faces=faces_transformed,
-            color=(51, 179, 51),  # Green to distinguish (int up to 255)
-            wireframe=False,
-            visible=False,  # Hidden by default, can toggle in viser UI
+            mesh=mesh_transformed,
         )
         print("Added transformed mesh to viser (hidden by default)")
 
         # Visualize the handle bounding box in viser
-        server.scene.add_box(
-            "/handle_bbox",
-            color=(255, 0, 0),  # Red (int up to 255)
-            dimensions=handle_bbox_size,
+        visualize_bbox(
+            server=server,
+            bbox_size=handle_bbox_size,
             position=handle_origin,
-            wxyz=(qw, qx, qy, qz),
-            visible=True,
+            wxyz=np.array([qw, qx, qy, qz]),
+            name="handle_bbox_frame",
+            radius=0.01,
+            color=(255, 0, 0),
         )
         
         # Crop mesh to handle bounding box to create handle_mesh
@@ -546,30 +575,20 @@ def process_mesh(config: ProcessMeshConfig) -> None:
             print("Saved handle_mesh_handle_frame (handle frame)")
             
             # Visualize handle mesh in viser (world frame)
-            handle_mesh_vertices = np.array(handle_mesh_world.vertices, dtype=np.float32)
-            handle_mesh_faces = np.array(handle_mesh_world.faces, dtype=np.uint32)
-            server.scene.add_mesh_simple(
+            server.scene.add_mesh_trimesh(
                 "/handle_mesh",
-                vertices=handle_mesh_vertices,
-                faces=handle_mesh_faces,
-                color=(0, 255, 255),  # Cyan
-                wireframe=False,
-                visible=True,
+                mesh=handle_mesh_world,
+                visible=False,
             )
             print("Added handle_mesh to viser")
             
             # Visualize handle mesh in handle frame (at origin)
-            handle_mesh_hf_vertices = np.array(handle_mesh_handle_frame.vertices, dtype=np.float32)
-            handle_mesh_hf_faces = np.array(handle_mesh_handle_frame.faces, dtype=np.uint32)
-            server.scene.add_mesh_simple(
+            server.scene.add_mesh_trimesh(
                 "/handle_mesh_at_origin",
-                vertices=handle_mesh_hf_vertices,
-                faces=handle_mesh_hf_faces,
-                color=(255, 165, 0),  # Orange
-                wireframe=False,
-                visible=False,  # Hidden by default
+                mesh=handle_mesh_handle_frame,
+                visible=False,
             )
-            print("Added handle_mesh_at_origin to viser (hidden by default)")
+            print("Added handle_mesh_at_origin to viser")
             
             # Compute bounding box of the handle mesh (in handle frame)
             handle_mesh_vertices_hf = np.array(handle_mesh_handle_frame.vertices)
@@ -591,13 +610,14 @@ def process_mesh(config: ProcessMeshConfig) -> None:
             print(f"Saved handle mesh bounding box size to: {handle_mesh_bbox_size_path}")
             
             # Visualize handle mesh bounding box in viser (blue)
-            server.scene.add_box(
-                "/handle_mesh_bbox",
-                color=(0, 0, 255),  # Blue
-                dimensions=handle_mesh_bbox_size,
+            visualize_bbox(
+                server=server,
+                bbox_size=handle_mesh_bbox_size,
                 position=handle_mesh_bbox_center_world,
-                wxyz=(qw, qx, qy, qz),  # Same orientation as handle frame
-                visible=True,
+                wxyz=np.array([qw, qx, qy, qz]),
+                name="handle_mesh_bbox_frame",
+                radius=0.01,
+                color=(0, 0, 255),
             )
             print("Added handle_mesh_bbox to viser (blue)")
         else:
