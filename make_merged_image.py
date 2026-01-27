@@ -33,6 +33,50 @@ POSE_COLORS = [
 rgb_images = [Image.open(RGB_FILES[i]) for i in FRAME_INDICES]
 mask_images = [Image.open(MASK_FILES[i]) for i in FRAME_INDICES]
 
+# Blur face region in all RGB images
+# Define bounding box for face: (x_min, y_min, x_max, y_max)
+# Adjust these coordinates to match where your face is in the images
+FACE_BBOX = (300, 0, 500, 200)  # Example: adjust to your face location
+BLUR_FACE = True  # Set to True to enable face blurring
+
+def blur_region(
+    image: Image.Image,
+    bbox: tuple,
+    blur_radius: int = 30,
+) -> Image.Image:
+    """
+    Blur a rectangular region of an image.
+    
+    Args:
+        image: PIL Image to blur
+        bbox: Bounding box as (x_min, y_min, x_max, y_max) in pixels
+        blur_radius: Radius of Gaussian blur (higher = more blur)
+    
+    Returns:
+        New PIL Image with the specified region blurred
+    """
+    from PIL import ImageFilter
+    
+    x_min, y_min, x_max, y_max = bbox
+    
+    # Make a copy
+    result = image.copy()
+    
+    # Crop the region
+    region = result.crop((x_min, y_min, x_max, y_max))
+    
+    # Apply Gaussian blur
+    blurred_region = region.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    
+    # Paste back
+    result.paste(blurred_region, (x_min, y_min))
+    
+    return result
+
+if BLUR_FACE:
+    print(f"Blurring face region: {FACE_BBOX}")
+    rgb_images = [blur_region(img, FACE_BBOX, blur_radius=30) for img in rgb_images]
+
 
 def get_mask_bool(mask_image: Image.Image) -> np.ndarray:
     """Convert mask image to boolean array."""
@@ -40,7 +84,6 @@ def get_mask_bool(mask_image: Image.Image) -> np.ndarray:
     if len(mask_array.shape) == 3:
         mask_array = mask_array[..., 0]
     return mask_array > 0
-
 
 def create_composite_with_object_poses(
     rgb_images: list,
@@ -107,7 +150,8 @@ def create_pose_sequence_figure(
     use_colored_outlines: bool = True,
     # use_grayscale_background: bool = True,
     use_grayscale_background: bool = False,
-    use_first_frame_only: bool = False,
+    # use_first_frame_only: bool = False,
+    use_first_frame_only: bool = True,
 ) -> np.ndarray:
     """
     Create a single image showing pose sequence with ghosted context.
