@@ -105,6 +105,9 @@ def create_pose_sequence_figure(
     pose_colors: list,
     background_alpha: float = 0.25,
     use_colored_outlines: bool = True,
+    # use_grayscale_background: bool = True,
+    use_grayscale_background: bool = False,
+    use_first_frame_only: bool = False,
 ) -> np.ndarray:
     """
     Create a single image showing pose sequence with ghosted context.
@@ -115,21 +118,32 @@ def create_pose_sequence_figure(
     
     Args:
         use_colored_outlines: If True, add colored outlines. If False, just show objects.
+        use_grayscale_background: If True, background is grayscale. If False, background keeps RGB colors.
+        use_first_frame_only: If True, only use first frame for background. If False, average all frames.
     """
     # Get image dimensions
     H, W, _ = np.array(rgb_images[0]).shape
     
-    # Create composite background from all frames (averaged and faded)
-    bg_composite = np.zeros((H, W, 3), dtype=np.float32)
-    for rgb_img in rgb_images:
-        bg_composite += np.array(rgb_img).astype(np.float32)
-    bg_composite /= len(rgb_images)
+    # Create background
+    if use_first_frame_only:
+        # Use only the first frame
+        bg_composite = np.array(rgb_images[0]).astype(np.float32)
+    else:
+        # Create composite background from all frames (averaged)
+        bg_composite = np.zeros((H, W, 3), dtype=np.float32)
+        for rgb_img in rgb_images:
+            bg_composite += np.array(rgb_img).astype(np.float32)
+        bg_composite /= len(rgb_images)
     
-    # Convert to grayscale and fade
-    bg_gray = np.mean(bg_composite, axis=2, keepdims=True)
-    # Make it light gray (closer to white)
-    bg_faded = bg_gray * background_alpha + 255 * (1 - background_alpha)
-    bg_faded = np.repeat(bg_faded, 3, axis=2)
+    if use_grayscale_background:
+        # Convert to grayscale and fade
+        bg_gray = np.mean(bg_composite, axis=2, keepdims=True)
+        # Make it light gray (closer to white)
+        bg_faded = bg_gray * background_alpha + 255 * (1 - background_alpha)
+        bg_faded = np.repeat(bg_faded, 3, axis=2)
+    else:
+        # Keep RGB colors but fade toward white
+        bg_faded = bg_composite * background_alpha + 255 * (1 - background_alpha)
     
     composite = bg_faded.copy()
     
@@ -208,7 +222,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 print("Creating pose sequence figure...")
 pose_sequence_img = create_pose_sequence_figure(
     rgb_images, mask_images, POSE_COLORS,
-    background_alpha=0.2,
+    background_alpha=0.7,
 )
 
 # Create alternative - stacked poses on clean background  
@@ -251,6 +265,8 @@ def create_single_pose_with_context(
     pose_color: tuple,
     background_alpha: float = 0.2,
     use_colored_outline: bool = True,
+    use_grayscale_background: bool = True,
+    use_first_frame_only: bool = False,
 ) -> np.ndarray:
     """
     Create an image showing a single object pose with greyed-out context.
@@ -258,23 +274,34 @@ def create_single_pose_with_context(
     
     Args:
         use_colored_outline: If True, add colored outline. If False, just show object.
+        use_grayscale_background: If True, background is grayscale. If False, background keeps RGB colors.
+        use_first_frame_only: If True, only use first frame for background. If False, average all frames.
     """
     from scipy import ndimage
     
     # Get image dimensions
     H, W, _ = np.array(rgb_images[0]).shape
     
-    # Create composite background from all frames (averaged and faded)
-    bg_composite = np.zeros((H, W, 3), dtype=np.float32)
-    for rgb_img in rgb_images:
-        bg_composite += np.array(rgb_img).astype(np.float32)
-    bg_composite /= len(rgb_images)
+    # Create background
+    if use_first_frame_only:
+        # Use only the first frame
+        bg_composite = np.array(rgb_images[0]).astype(np.float32)
+    else:
+        # Create composite background from all frames (averaged)
+        bg_composite = np.zeros((H, W, 3), dtype=np.float32)
+        for rgb_img in rgb_images:
+            bg_composite += np.array(rgb_img).astype(np.float32)
+        bg_composite /= len(rgb_images)
     
-    # Convert to grayscale and fade
-    bg_gray = np.mean(bg_composite, axis=2, keepdims=True)
-    # Make it light gray (closer to white)
-    bg_faded = bg_gray * background_alpha + 255 * (1 - background_alpha)
-    bg_faded = np.repeat(bg_faded, 3, axis=2)
+    if use_grayscale_background:
+        # Convert to grayscale and fade
+        bg_gray = np.mean(bg_composite, axis=2, keepdims=True)
+        # Make it light gray (closer to white)
+        bg_faded = bg_gray * background_alpha + 255 * (1 - background_alpha)
+        bg_faded = np.repeat(bg_faded, 3, axis=2)
+    else:
+        # Keep RGB colors but fade toward white
+        bg_faded = bg_composite * background_alpha + 255 * (1 - background_alpha)
     
     composite = bg_faded.copy()
     
@@ -306,7 +333,7 @@ for i, (color, name) in enumerate(zip(POSE_COLORS, POSE_NAMES)):
         rgb_images, mask_images,
         pose_idx=i,
         pose_color=color,
-        background_alpha=0.2,
+        background_alpha=0.7,
         use_colored_outline=True,
     )
     output_path = OUTPUT_DIR / f"pose_sequence_{name}.png"
@@ -322,7 +349,7 @@ for i, name in enumerate(POSE_NAMES_SIMPLE):
         rgb_images, mask_images,
         pose_idx=i,
         pose_color=(0, 0, 0),  # Color doesn't matter since we're not using outlines
-        background_alpha=0.2,
+        background_alpha=0.7,
         use_colored_outline=False,
     )
     output_path = OUTPUT_DIR / f"pose_sequence_{name}_simple.png"
@@ -333,7 +360,7 @@ for i, name in enumerate(POSE_NAMES_SIMPLE):
 print("Creating combined pose sequence (no outlines)...")
 pose_sequence_simple_img = create_pose_sequence_figure(
     rgb_images, mask_images, POSE_COLORS,
-    background_alpha=0.2,
+    background_alpha=0.7,
     use_colored_outlines=False,
 )
 Image.fromarray(pose_sequence_simple_img).save(OUTPUT_DIR / "pose_sequence_with_context_simple.png")
