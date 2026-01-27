@@ -250,10 +250,14 @@ def create_single_pose_with_context(
     pose_idx: int,
     pose_color: tuple,
     background_alpha: float = 0.2,
+    use_colored_outline: bool = True,
 ) -> np.ndarray:
     """
     Create an image showing a single object pose with greyed-out context.
     Same style as pose_sequence_with_context but only one pose highlighted.
+    
+    Args:
+        use_colored_outline: If True, add colored outline. If False, just show object.
     """
     from scipy import ndimage
     
@@ -278,24 +282,23 @@ def create_single_pose_with_context(
     rgb_array = np.array(rgb_images[pose_idx]).astype(np.float32)
     mask_bool = get_mask_bool(mask_images[pose_idx])
     
-    # Create thick outline
-    outline_width = 4
-    dilated = ndimage.binary_dilation(mask_bool, iterations=outline_width)
-    outline = dilated & ~mask_bool
-    
     # Object interior: show actual RGB (vibrant)
     for c in range(3):
         composite[:, :, c] = np.where(mask_bool, rgb_array[:, :, c], composite[:, :, c])
     
-    # Add colored outline
-    for c in range(3):
-        composite[:, :, c] = np.where(outline, pose_color[c], composite[:, :, c])
+    # Add colored outline only if requested
+    if use_colored_outline:
+        outline_width = 4
+        dilated = ndimage.binary_dilation(mask_bool, iterations=outline_width)
+        outline = dilated & ~mask_bool
+        for c in range(3):
+            composite[:, :, c] = np.where(outline, pose_color[c], composite[:, :, c])
     
     return np.clip(composite, 0, 255).astype(np.uint8)
 
 
-# Create individual pose images (one for each pose)
-print("Creating individual pose images...")
+# Create individual pose images (one for each pose) - WITH colored outlines
+print("Creating individual pose images (with colored outlines)...")
 POSE_NAMES = ["pose_1_red", "pose_2_green", "pose_3_blue"]
 
 for i, (color, name) in enumerate(zip(POSE_COLORS, POSE_NAMES)):
@@ -304,10 +307,37 @@ for i, (color, name) in enumerate(zip(POSE_COLORS, POSE_NAMES)):
         pose_idx=i,
         pose_color=color,
         background_alpha=0.2,
+        use_colored_outline=True,
     )
     output_path = OUTPUT_DIR / f"pose_sequence_{name}.png"
     Image.fromarray(single_pose_img).save(output_path)
     print(f"Saved {output_path}")
+
+# Create individual pose images (one for each pose) - WITHOUT colored outlines
+print("Creating individual pose images (no outlines)...")
+POSE_NAMES_SIMPLE = ["pose_1", "pose_2", "pose_3"]
+
+for i, name in enumerate(POSE_NAMES_SIMPLE):
+    single_pose_img = create_single_pose_with_context(
+        rgb_images, mask_images,
+        pose_idx=i,
+        pose_color=(0, 0, 0),  # Color doesn't matter since we're not using outlines
+        background_alpha=0.2,
+        use_colored_outline=False,
+    )
+    output_path = OUTPUT_DIR / f"pose_sequence_{name}_simple.png"
+    Image.fromarray(single_pose_img).save(output_path)
+    print(f"Saved {output_path}")
+
+# Create combined pose sequence WITHOUT colored outlines
+print("Creating combined pose sequence (no outlines)...")
+pose_sequence_simple_img = create_pose_sequence_figure(
+    rgb_images, mask_images, POSE_COLORS,
+    background_alpha=0.2,
+    use_colored_outlines=False,
+)
+Image.fromarray(pose_sequence_simple_img).save(OUTPUT_DIR / "pose_sequence_with_context_simple.png")
+print(f"Saved {OUTPUT_DIR / 'pose_sequence_with_context_simple.png'}")
 
 print("Done!")
 
