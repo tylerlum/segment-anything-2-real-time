@@ -257,7 +257,7 @@ def visualize_bbox(
     add_dotted_lines: bool = False,
     dot_gap: float = 0.005,
     add_lines: bool = True,
-    line_thickness: float = 0.001,
+    line_thickness: float = 0.002,
 ) -> None:
     """
     Visualize a bounding box in viser.
