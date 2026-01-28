@@ -36,7 +36,7 @@ mask_images = [Image.open(MASK_FILES[i]) for i in FRAME_INDICES]
 # Blur face region in all RGB images
 # Define bounding box for face: (x_min, y_min, x_max, y_max)
 # Adjust these coordinates to match where your face is in the images
-FACE_BBOX = (300, 0, 500, 200)  # Example: adjust to your face location
+FACE_BBOX = (300, 0, 600, 200)  # Example: adjust to your face location
 BLUR_FACE = True  # Set to True to enable face blurring
 
 def blur_region(
@@ -76,6 +76,14 @@ def blur_region(
 if BLUR_FACE:
     print(f"Blurring face region: {FACE_BBOX}")
     rgb_images = [blur_region(img, FACE_BBOX, blur_radius=30) for img in rgb_images]
+    
+    # Save blurred RGB images
+    blurred_output_dir = Path(__file__).parent / "outputs" / "blurred_rgb"
+    blurred_output_dir.mkdir(parents=True, exist_ok=True)
+    for i, (frame_idx, img) in enumerate(zip(FRAME_INDICES, rgb_images)):
+        output_path = blurred_output_dir / f"frame_{frame_idx:04d}.png"
+        img.save(output_path)
+        print(f"Saved blurred image: {output_path}")
 
 
 def get_mask_bool(mask_image: Image.Image) -> np.ndarray:
@@ -309,8 +317,7 @@ def create_single_pose_with_context(
     pose_color: tuple,
     background_alpha: float = 0.2,
     use_colored_outline: bool = True,
-    use_grayscale_background: bool = True,
-    use_first_frame_only: bool = False,
+    use_grayscale_background: bool = False,
 ) -> np.ndarray:
     """
     Create an image showing a single object pose with greyed-out context.
@@ -319,23 +326,14 @@ def create_single_pose_with_context(
     Args:
         use_colored_outline: If True, add colored outline. If False, just show object.
         use_grayscale_background: If True, background is grayscale. If False, background keeps RGB colors.
-        use_first_frame_only: If True, only use first frame for background. If False, average all frames.
     """
     from scipy import ndimage
     
     # Get image dimensions
-    H, W, _ = np.array(rgb_images[0]).shape
+    H, W, _ = np.array(rgb_images[pose_idx]).shape
     
     # Create background
-    if use_first_frame_only:
-        # Use only the first frame
-        bg_composite = np.array(rgb_images[0]).astype(np.float32)
-    else:
-        # Create composite background from all frames (averaged)
-        bg_composite = np.zeros((H, W, 3), dtype=np.float32)
-        for rgb_img in rgb_images:
-            bg_composite += np.array(rgb_img).astype(np.float32)
-        bg_composite /= len(rgb_images)
+    bg_composite = np.array(rgb_images[pose_idx]).astype(np.float32)
     
     if use_grayscale_background:
         # Convert to grayscale and fade

@@ -96,6 +96,14 @@ def blur_region(
 if BLUR_FACE:
     print(f"Blurring face region: {FACE_BBOX}")
     rgb_images = [blur_region(img, FACE_BBOX, blur_radius=30) for img in rgb_images]
+    
+    # Save blurred RGB images
+    blurred_output_dir = Path(__file__).parent / "outputs" / "blurred_rgb"
+    blurred_output_dir.mkdir(parents=True, exist_ok=True)
+    for i, (frame_idx, img) in enumerate(zip(FRAME_INDICES, rgb_images)):
+        output_path = blurred_output_dir / f"frame_{frame_idx:04d}.png"
+        img.save(output_path)
+        print(f"Saved blurred image: {output_path}")
 
 
 def get_mask_bool(mask_image: Image.Image) -> np.ndarray:
