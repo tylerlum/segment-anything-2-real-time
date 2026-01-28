@@ -13,6 +13,8 @@ import tyro
 import viser
 from PIL import Image
 
+RED, GREEN, BLUE = (255, 0, 0), (0, 255, 0), (0, 0, 255)
+
 
 def convert_depth_to_meters(depth: np.ndarray) -> np.ndarray:
     """Convert depth to meters (handles both mm and m inputs)."""
@@ -542,12 +544,16 @@ def process_mesh(config: ProcessMeshConfig) -> None:
         handle_colors = np.concatenate(handle_colors_list, axis=0).astype(np.uint8)
         print(f"Handle point cloud: {len(handle_points)} points")
 
-        # Remove outliers from handle_points (keep 10th to 90th percentile in x, y, z)
-        handle_mask = np.ones(len(handle_points), dtype=bool)
-        for dim in range(3):
-            p10 = np.percentile(handle_points[:, dim], 10)
-            p90 = np.percentile(handle_points[:, dim], 90)
-            handle_mask &= (handle_points[:, dim] >= p10) & (handle_points[:, dim] <= p90)
+        # Remove outliers from handle_points using median absolute deviation (more robust to extreme outliers)
+        # Compute distance from each point to the median position, remove points > 3 MAD away
+        median_pos = np.median(handle_points, axis=0)
+        distances = np.linalg.norm(handle_points - median_pos, axis=1)
+        median_dist = np.median(distances)
+        # MAD (median absolute deviation) is more robust than std
+        mad = np.median(np.abs(distances - median_dist))
+        # Use 3 * MAD as threshold (similar to 3 sigma but robust)
+        threshold = median_dist + 3 * 1.4826 * mad  # 1.4826 scales MAD to be consistent with std for normal dist
+        handle_mask = distances < threshold
         handle_points = handle_points[handle_mask]
         handle_colors = handle_colors[handle_mask]
         print(f"Handle points after outlier removal: {len(handle_points)} points")
@@ -561,12 +567,16 @@ def process_mesh(config: ProcessMeshConfig) -> None:
         head_colors = np.concatenate(head_colors_list, axis=0).astype(np.uint8)
         print(f"Head point cloud: {len(head_points)} points")
 
-        # Remove outliers from head_points (keep 10th to 90th percentile in x, y, z)
-        head_mask = np.ones(len(head_points), dtype=bool)
-        for dim in range(3):
-            p10 = np.percentile(head_points[:, dim], 10)
-            p90 = np.percentile(head_points[:, dim], 90)
-            head_mask &= (head_points[:, dim] >= p10) & (head_points[:, dim] <= p90)
+        # Remove outliers from head_points using median absolute deviation (more robust to extreme outliers)
+        # Compute distance from each point to the median position, remove points > 3 MAD away
+        median_pos = np.median(head_points, axis=0)
+        distances = np.linalg.norm(head_points - median_pos, axis=1)
+        median_dist = np.median(distances)
+        # MAD (median absolute deviation) is more robust than std
+        mad = np.median(np.abs(distances - median_dist))
+        # Use 3 * MAD as threshold (similar to 3 sigma but robust)
+        threshold = median_dist + 3 * 1.4826 * mad  # 1.4826 scales MAD to be consistent with std for normal dist
+        head_mask = distances < threshold
         head_points = head_points[head_mask]
         head_colors = head_colors[head_mask]
         print(f"Head points after outlier removal: {len(head_points)} points")
@@ -666,14 +676,14 @@ def process_mesh(config: ProcessMeshConfig) -> None:
         )
         print("Added transformed mesh to viser (hidden by default)")
 
-        # Visualize the handle bounding box in viser
+        # Visualize the handle bounding box in viser (blue)
         visualize_bbox(
             server=server,
             bbox_size=handle_bbox_size,
             position=handle_origin,
             wxyz=np.array([qw, qx, qy, qz]),
             name="handle_bbox_frame",
-            color=(255, 0, 0),
+            color=BLUE,
         )
         
         # Crop mesh to handle bounding box to create handle_mesh
@@ -755,16 +765,16 @@ def process_mesh(config: ProcessMeshConfig) -> None:
             np.savetxt(handle_mesh_bbox_size_path, handle_mesh_bbox_size)
             print(f"Saved handle mesh bounding box size to: {handle_mesh_bbox_size_path}")
             
-            # Visualize handle mesh bounding box in viser (blue)
+            # Visualize handle mesh bounding box in viser (red)
             visualize_bbox(
                 server=server,
                 bbox_size=handle_mesh_bbox_size,
                 position=handle_mesh_bbox_center_world,
                 wxyz=np.array([qw, qx, qy, qz]),
                 name="handle_mesh_bbox_frame",
-                color=(0, 0, 255),
+                color=RED,
             )
-            print("Added handle_mesh_bbox to viser (blue)")
+            print("Added handle_mesh_bbox to viser (red)")
         else:
             print("WARNING: No faces found inside handle bounding box!")
     

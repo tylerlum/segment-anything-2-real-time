@@ -58,6 +58,7 @@ def compute_camera_position(
     radius: float,
     azimuth_deg: float,
     elevation_deg: float,
+    up_axis: int = 1,
 ) -> np.ndarray:
     """
     Compute camera position on a sphere around the centroid.
@@ -67,6 +68,8 @@ def compute_camera_position(
         radius: Distance from centroid
         azimuth_deg: Horizontal angle in degrees (0-360)
         elevation_deg: Vertical angle in degrees (0 = horizontal, 90 = top)
+        up_axis: Which axis to rotate around (0=X, 1=Y, 2=Z). Camera orbits in the plane
+                 perpendicular to this axis.
     
     Returns:
         Camera position as (3,) array
@@ -74,15 +77,57 @@ def compute_camera_position(
     azimuth_rad = np.radians(azimuth_deg)
     elevation_rad = np.radians(elevation_deg)
     
-    # Spherical to Cartesian conversion
-    # x = r * cos(elevation) * cos(azimuth)
-    # y = r * sin(elevation)  (y is up)
-    # z = r * cos(elevation) * sin(azimuth)
-    x = radius * np.cos(elevation_rad) * np.cos(azimuth_rad)
-    y = radius * np.sin(elevation_rad)
-    z = radius * np.cos(elevation_rad) * np.sin(azimuth_rad)
+    # Compute position in a coordinate system where the up_axis is "up"
+    # horizontal_dist is the distance in the plane perpendicular to up_axis
+    horizontal_dist = radius * np.cos(elevation_rad)
+    vertical_dist = radius * np.sin(elevation_rad)
     
-    return centroid + np.array([x, y, z])
+    # Position in the horizontal plane (perpendicular to up_axis)
+    h1 = horizontal_dist * np.cos(azimuth_rad)
+    h2 = horizontal_dist * np.sin(azimuth_rad)
+    
+    # Map to actual XYZ based on which axis is "up"
+    if up_axis == 0:  # X is up, rotate in YZ plane
+        offset = np.array([vertical_dist, h1, h2])
+    elif up_axis == 1:  # Y is up, rotate in XZ plane (original behavior)
+        offset = np.array([h1, vertical_dist, h2])
+    else:  # Z is up, rotate in XY plane
+        offset = np.array([h1, h2, vertical_dist])
+    
+    return centroid + offset
+
+
+def get_up_axis_from_bbox(mesh) -> int:
+    """
+    Determine which axis is the longest (to use as the rotation axis).
+    
+    Args:
+        mesh: trimesh mesh object
+    
+    Returns:
+        Axis index (0=X, 1=Y, 2=Z) of the longest dimension
+    """
+    bbox = mesh.bounding_box.extents  # (x_extent, y_extent, z_extent)
+    longest_axis = int(np.argmax(bbox))
+    return longest_axis
+
+
+def get_up_vector_from_axis(up_axis: int) -> np.ndarray:
+    """
+    Get the up vector corresponding to the given axis.
+    
+    Args:
+        up_axis: Axis index (0=X, 1=Y, 2=Z)
+    
+    Returns:
+        Up vector as (3,) array
+    """
+    up_vectors = {
+        0: np.array([1, 0, 0]),  # X up
+        1: np.array([0, 1, 0]),  # Y up
+        2: np.array([0, 0, 1]),  # Z up
+    }
+    return up_vectors[up_axis]
 
 
 def compute_camera_extrinsics(
@@ -131,9 +176,18 @@ def render_frame(
     radius: float,
     azimuth_deg: float,
     elevation_deg: float,
+    up_axis: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Render a single frame with the camera at the specified position.
+    
+    Args:
+        plotter: PyVista plotter
+        centroid: Center point to orbit around
+        radius: Camera distance from centroid
+        azimuth_deg: Horizontal angle in degrees
+        elevation_deg: Vertical angle in degrees
+        up_axis: Which axis to rotate around (0=X, 1=Y, 2=Z)
     
     Returns:
         Tuple of (rgb_image, depth_image, T_W_C) as numpy arrays
@@ -141,9 +195,9 @@ def render_frame(
         - depth_image: (H, W) float32 with depth values in world units (meters)
         - T_W_C: (4, 4) camera extrinsic matrix (world from camera)
     """
-    camera_pos = compute_camera_position(centroid, radius, azimuth_deg, elevation_deg)
+    camera_pos = compute_camera_position(centroid, radius, azimuth_deg, elevation_deg, up_axis)
     target_pos = centroid
-    up_vector = np.array([0, 1, 0])  # y-up
+    up_vector = get_up_vector_from_axis(up_axis)
     
     plotter.camera_position = [
         camera_pos.tolist(),
@@ -231,7 +285,14 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
     
     camera_radius = bounding_radius * config.orbit_radius_scale
     
+    # Determine which axis to rotate around (longest axis of bounding box)
+    up_axis = get_up_axis_from_bbox(mesh)
+    axis_names = {0: 'X', 1: 'Y', 2: 'Z'}
+    bbox_extents = mesh.bounding_box.extents
+    
     print(f"Mesh centroid: {centroid}")
+    print(f"Bounding box extents (X, Y, Z): {bbox_extents}")
+    print(f"Longest axis: {axis_names[up_axis]} (rotating around {axis_names[up_axis]}-axis)")
     print(f"Bounding radius: {bounding_radius:.4f}")
     print(f"Camera radius: {camera_radius:.4f}")
     
@@ -292,6 +353,7 @@ def create_mesh_video(config: MeshVideoConfig) -> None:
             camera_radius,
             azimuth,
             config.elevation_angle,
+            up_axis,
         )
         rgb_frames.append(rgb)
         cam_poses.append(T_W_C)
