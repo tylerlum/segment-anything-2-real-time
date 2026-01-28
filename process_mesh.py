@@ -251,11 +251,13 @@ def visualize_bbox(
     position: np.ndarray,
     wxyz: np.ndarray,
     name: str,
-    radius: float = 0.01,
+    radius: float = 0.005,
     color: Tuple[int, int, int] = (255, 0, 0),
-    add_corner_keypoints: bool = True,
-    add_dotted_lines: bool = True,
-    dot_gap: float = 0.01,
+    add_corner_keypoints: bool = False,
+    add_dotted_lines: bool = False,
+    dot_gap: float = 0.005,
+    add_lines: bool = True,
+    line_thickness: float = 0.001,
 ) -> None:
     """
     Visualize a bounding box in viser.
@@ -271,7 +273,15 @@ def visualize_bbox(
         add_corner_keypoints: If True, add spheres at corners
         add_dotted_lines: If True, add small spheres along edges
         dot_gap: Gap between dots along edges (in world units)
+        add_lines: If True, add solid cylinder lines along edges
+        line_thickness: Radius of the cylinder lines
     """
+    # HACK
+    HACK_CHANGE_BBOX_SIZE = False
+    if HACK_CHANGE_BBOX_SIZE:
+        bbox_size = np.copy(bbox_size)
+        bbox_size[0] *= 1.2
+
     # Visualize the bounding box in viser
     server.scene.add_frame(
         f"/{name}",
@@ -365,6 +375,63 @@ def visualize_bbox(
                             color=color,
                             position=dot_pos,
                         )
+    
+    # Add solid lines along edges
+    if add_lines:
+        # Define the 12 edges of the box as pairs of corner indices
+        edges = [
+            # Bottom face edges
+            (0, 1), (0, 2), (1, 3), (2, 3),
+            # Top face edges
+            (4, 5), (4, 6), (5, 7), (6, 7),
+            # Vertical edges connecting bottom and top
+            (0, 4), (1, 5), (2, 6), (3, 7),
+        ]
+        
+        for edge_idx, (start_idx, end_idx) in enumerate(edges):
+            start_pos = corner_offsets[start_idx]
+            end_pos = corner_offsets[end_idx]
+            
+            # Calculate edge properties
+            edge_vec = end_pos - start_pos
+            edge_length = np.linalg.norm(edge_vec)
+            
+            if edge_length > 0:
+                # Create a cylinder along the edge
+                # trimesh.creation.cylinder creates a cylinder along Z-axis, centered at origin
+                cylinder = trimesh.creation.cylinder(radius=line_thickness, height=edge_length, sections=8)
+                
+                # We need to rotate and translate the cylinder to align with the edge
+                # The cylinder is along Z, we need to align it with edge_vec
+                edge_dir = edge_vec / edge_length
+                
+                # Create rotation matrix to align Z-axis with edge direction
+                z_axis = np.array([0, 0, 1])
+                if np.allclose(edge_dir, z_axis):
+                    rotation_matrix = np.eye(3)
+                elif np.allclose(edge_dir, -z_axis):
+                    rotation_matrix = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
+                else:
+                    # Rodrigues' rotation formula
+                    v = np.cross(z_axis, edge_dir)
+                    s = np.linalg.norm(v)
+                    c = np.dot(z_axis, edge_dir)
+                    vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+                    rotation_matrix = np.eye(3) + vx + vx @ vx * ((1 - c) / (s * s))
+                
+                # Apply rotation to cylinder vertices
+                rotated_vertices = (rotation_matrix @ cylinder.vertices.T).T
+                
+                # Translate to edge midpoint
+                midpoint = (start_pos + end_pos) / 2
+                translated_vertices = rotated_vertices + midpoint
+                
+                server.scene.add_mesh_simple(
+                    f"/{name}/bbox_line_{edge_idx}",
+                    vertices=translated_vertices.astype(np.float32),
+                    faces=cylinder.faces,
+                    color=color,
+                )
 
 def process_mesh(config: ProcessMeshConfig) -> None:
     """
@@ -606,7 +673,6 @@ def process_mesh(config: ProcessMeshConfig) -> None:
             position=handle_origin,
             wxyz=np.array([qw, qx, qy, qz]),
             name="handle_bbox_frame",
-            radius=0.01,
             color=(255, 0, 0),
         )
         
@@ -696,7 +762,6 @@ def process_mesh(config: ProcessMeshConfig) -> None:
                 position=handle_mesh_bbox_center_world,
                 wxyz=np.array([qw, qx, qy, qz]),
                 name="handle_mesh_bbox_frame",
-                radius=0.01,
                 color=(0, 0, 255),
             )
             print("Added handle_mesh_bbox to viser (blue)")
