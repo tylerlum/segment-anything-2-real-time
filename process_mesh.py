@@ -245,14 +245,42 @@ class ProcessMeshConfig:
     def __post_init__(self) -> None:
         assert self.output_dir.exists(), f"Output directory not found: {self.output_dir}"
 
-def visualize_bbox(server: viser.ViserServer, bbox_size: np.ndarray, position: np.ndarray, wxyz: np.ndarray, name: str, radius: float = 0.01, color: Tuple[int, int, int] = (255, 0, 0)) -> None:
+def visualize_bbox(
+    server: viser.ViserServer,
+    bbox_size: np.ndarray,
+    position: np.ndarray,
+    wxyz: np.ndarray,
+    name: str,
+    radius: float = 0.01,
+    color: Tuple[int, int, int] = (255, 0, 0),
+    add_corner_keypoints: bool = True,
+    add_dotted_lines: bool = True,
+    dot_gap: float = 0.01,
+) -> None:
+    """
+    Visualize a bounding box in viser.
+    
+    Args:
+        server: Viser server instance
+        bbox_size: Size of the bounding box (x, y, z)
+        position: Position of the bounding box center
+        wxyz: Quaternion orientation (w, x, y, z)
+        name: Name for the scene elements
+        radius: Radius of corner spheres
+        color: RGB color tuple
+        add_corner_keypoints: If True, add spheres at corners
+        add_dotted_lines: If True, add small spheres along edges
+        dot_gap: Gap between dots along edges (in world units)
+    """
     # Visualize the bounding box in viser
     server.scene.add_frame(
         f"/{name}",
         wxyz=wxyz,
         position=position,
-        axes_length=0.3,
-        axes_radius=0.01,
+        # axes_length=0.3,
+        # axes_radius=0.01,
+        axes_length=0.0,
+        axes_radius=0.0,
     )
     server.scene.add_box(
         f"/{name}/bbox",
@@ -260,31 +288,83 @@ def visualize_bbox(server: viser.ViserServer, bbox_size: np.ndarray, position: n
         dimensions=bbox_size,
         visible=True,
     )
-    # Add spheres at the corners of the handle bounding box
+    
     # Define corner offsets in handle frame (bbox centered at origin)
     half_size = bbox_size / 2
     corner_offsets = np.array([
-        [-half_size[0], -half_size[1], -half_size[2]],
-        [-half_size[0], -half_size[1], +half_size[2]],
-        [-half_size[0], +half_size[1], -half_size[2]],
-        [-half_size[0], +half_size[1], +half_size[2]],
-        [+half_size[0], -half_size[1], -half_size[2]],
-        [+half_size[0], -half_size[1], +half_size[2]],
-        [+half_size[0], +half_size[1], -half_size[2]],
-        [+half_size[0], +half_size[1], +half_size[2]],
+        [-half_size[0], -half_size[1], -half_size[2]],  # 0
+        [-half_size[0], -half_size[1], +half_size[2]],  # 1
+        [-half_size[0], +half_size[1], -half_size[2]],  # 2
+        [-half_size[0], +half_size[1], +half_size[2]],  # 3
+        [+half_size[0], -half_size[1], -half_size[2]],  # 4
+        [+half_size[0], -half_size[1], +half_size[2]],  # 5
+        [+half_size[0], +half_size[1], -half_size[2]],  # 6
+        [+half_size[0], +half_size[1], +half_size[2]],  # 7
     ])
     
-    for i, offset in enumerate(corner_offsets):
-        # Create a small sphere
-        sphere = trimesh.creation.icosphere(subdivisions=2, radius=radius)
+    # Add spheres at the corners
+    if add_corner_keypoints:
+        for i, offset in enumerate(corner_offsets):
+            sphere = trimesh.creation.icosphere(subdivisions=2, radius=radius)
+            server.scene.add_mesh_simple(
+                f"/{name}/bbox_corner_{i}",
+                vertices=sphere.vertices,
+                faces=sphere.faces,
+                color=color,
+                position=offset,
+            )
+    
+    # Add dotted lines along edges
+    if add_dotted_lines:
+        # Define the 12 edges of the box as pairs of corner indices
+        edges = [
+            # Bottom face edges
+            (0, 1), (0, 2), (1, 3), (2, 3),
+            # Top face edges
+            (4, 5), (4, 6), (5, 7), (6, 7),
+            # Vertical edges connecting bottom and top
+            (0, 4), (1, 5), (2, 6), (3, 7),
+        ]
         
-        server.scene.add_mesh_simple(
-            f"/{name}/bbox_corner_{i}",
-            vertices=sphere.vertices,
-            faces=sphere.faces,
-            color=color,
-            position=offset,
-        )
+        dot_radius = radius * 0.4  # Smaller radius for edge dots
+        
+        # Always add corner dots when dotted lines are enabled
+        for i, offset in enumerate(corner_offsets):
+            sphere = trimesh.creation.icosphere(subdivisions=1, radius=dot_radius)
+            server.scene.add_mesh_simple(
+                f"/{name}/bbox_dotted_corner_{i}",
+                vertices=sphere.vertices,
+                faces=sphere.faces,
+                color=color,
+                position=offset,
+            )
+        
+        for edge_idx, (start_idx, end_idx) in enumerate(edges):
+            start_pos = corner_offsets[start_idx]
+            end_pos = corner_offsets[end_idx]
+            
+            # Calculate edge length and number of dots based on gap
+            edge_vec = end_pos - start_pos
+            edge_length = np.linalg.norm(edge_vec)
+            
+            if edge_length > 0:
+                # Number of interior dots (excluding corners)
+                num_dots = max(0, int(edge_length / dot_gap) - 1)
+                
+                if num_dots > 0:
+                    # Evenly space dots along the edge (between corners)
+                    for dot_idx in range(1, num_dots + 1):
+                        t = dot_idx / (num_dots + 1)  # Interpolation factor (0 < t < 1)
+                        dot_pos = start_pos + t * edge_vec
+                        
+                        sphere = trimesh.creation.icosphere(subdivisions=1, radius=dot_radius)
+                        server.scene.add_mesh_simple(
+                            f"/{name}/bbox_edge_{edge_idx}_dot_{dot_idx}",
+                            vertices=sphere.vertices,
+                            faces=sphere.faces,
+                            color=color,
+                            position=dot_pos,
+                        )
 
 def process_mesh(config: ProcessMeshConfig) -> None:
     """
