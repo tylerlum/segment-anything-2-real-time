@@ -4,7 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Paths
-DEMO_DIR = Path("/juno/u/kedia/FoundationPose/human_videos/Jan_17/brush/anvil_brush/sweep_forward")
+# DEMO_DIR = Path("/juno/u/kedia/FoundationPose/human_videos/Jan_17/brush/anvil_brush/sweep_forward")
+# DEMO_DIR = Path("/juno/u/kedia/FoundationPose/human_videos/Jan_17/hammer/toy_hammer/down_swing")
+DEMO_DIR = Path("/juno/u/tylerlum/Downloads/red_brush_sweep_forward_human_rerecord")
+# DEMO_DIR = Path("/juno/u/tylerlum/Downloads/toy_hammer_down_swing_human_rerecord/")
+
 assert DEMO_DIR.exists(), f"Demo directory not found: {DEMO_DIR}"
 RGB_DIR = DEMO_DIR / "rgb"
 assert RGB_DIR.exists(), f"RGB directory not found: {RGB_DIR}"
@@ -20,7 +24,12 @@ assert len(MASK_FILES) > 0, f"No mask files found in {MASK_DIR}"
 print(f"Found {len(MASK_FILES)} mask files")
 
 # Frame indices to use
-FRAME_INDICES = [0, 200, 400]
+# FRAME_INDICES = [0, 200, 400]
+# FRAME_INDICES = [0, 137, 246, 355]
+# FRAME_INDICES = [137, 246, 355]
+# FRAME_INDICES = [1, 2, 3]
+# FRAME_INDICES = [1, 3, 4]
+FRAME_INDICES = [0, 1, 2]
 
 # Colors for each pose (vibrant, distinct colors)
 POSE_COLORS = [
@@ -33,10 +42,19 @@ POSE_COLORS = [
 rgb_images = [Image.open(RGB_FILES[i]) for i in FRAME_INDICES]
 mask_images = [Image.open(MASK_FILES[i]) for i in FRAME_INDICES]
 
+
+# Output directory
+# OUTPUT_DIR = Path(__file__).parent / "outputs_red_brush_rerecord"
+# OUTPUT_DIR = Path(__file__).parent / "outputs_hammer_rerecord"
+OUTPUT_DIR = Path(__file__).parent / "outputs_red_brush_rerecord_2"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 # Blur face region in all RGB images
 # Define bounding box for face: (x_min, y_min, x_max, y_max)
 # Adjust these coordinates to match where your face is in the images
-FACE_BBOX = (300, 0, 600, 200)  # Example: adjust to your face location
+# FACE_BBOX = (300, 0, 600, 200)  # Example: adjust to your face location
+FACE_BBOX = (0, 0, 150, 75)  # Example: adjust to your face location
+# FACE_BBOX = (0, 0, 250, 150)  # Example: adjust to your face location
 BLUR_FACE = True  # Set to True to enable face blurring
 
 def blur_region(
@@ -78,7 +96,7 @@ if BLUR_FACE:
     rgb_images = [blur_region(img, FACE_BBOX, blur_radius=30) for img in rgb_images]
     
     # Save blurred RGB images
-    blurred_output_dir = Path(__file__).parent / "outputs" / "blurred_rgb"
+    blurred_output_dir = OUTPUT_DIR / "blurred_rgb"
     blurred_output_dir.mkdir(parents=True, exist_ok=True)
     for i, (frame_idx, img) in enumerate(zip(FRAME_INDICES, rgb_images)):
         output_path = blurred_output_dir / f"frame_{frame_idx:04d}.png"
@@ -234,7 +252,7 @@ def create_stacked_poses_figure(
     H, W, _ = np.array(rgb_images[0]).shape
     
     # Start with light gray background
-    composite = np.full((H, W, 3), 245, dtype=np.float32)  # Near-white
+    composite = np.full((H, W, 3), 255, dtype=np.float32)  # Near-white
     
     from scipy import ndimage
     
@@ -249,7 +267,8 @@ def create_stacked_poses_figure(
         outline = dilated & ~mask_bool
         
         # Add slight transparency for earlier poses
-        alpha = 0.7 + 0.3 * (i / (len(rgb_images) - 1)) if len(rgb_images) > 1 else 1.0
+        # alpha = 0.7 + 0.3 * (i / (len(rgb_images) - 1)) if len(rgb_images) > 1 else 1.0
+        alpha = 1.0
         
         # Object interior
         for c in range(3):
@@ -265,10 +284,6 @@ def create_stacked_poses_figure(
     
     return np.clip(composite, 0, 255).astype(np.uint8)
 
-
-# Output directory
-OUTPUT_DIR = Path(__file__).parent / "outputs"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Create the main figure - pose sequence with context
 print("Creating pose sequence figure...")

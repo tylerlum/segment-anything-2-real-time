@@ -765,14 +765,15 @@ def process_mesh(config: ProcessMeshConfig) -> None:
             np.savetxt(handle_mesh_bbox_size_path, handle_mesh_bbox_size)
             print(f"Saved handle mesh bounding box size to: {handle_mesh_bbox_size_path}")
             
-            # Visualize handle mesh bounding box in viser (red)
+            # Visualize handle mesh bounding box in viser
             visualize_bbox(
                 server=server,
                 bbox_size=handle_mesh_bbox_size,
                 position=handle_mesh_bbox_center_world,
                 wxyz=np.array([qw, qx, qy, qz]),
                 name="handle_mesh_bbox_frame",
-                color=RED,
+                # color=RED,
+                color=GREEN,
             )
             print("Added handle_mesh_bbox to viser (red)")
         else:
