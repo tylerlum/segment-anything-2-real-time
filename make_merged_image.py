@@ -27,9 +27,9 @@ print(f"Found {len(MASK_FILES)} mask files")
 # FRAME_INDICES = [0, 200, 400]
 # FRAME_INDICES = [0, 137, 246, 355]
 # FRAME_INDICES = [137, 246, 355]
-# FRAME_INDICES = [1, 2, 3]
+FRAME_INDICES = [1, 2, 3]
 # FRAME_INDICES = [1, 3, 4]
-FRAME_INDICES = [0, 1, 2]
+# FRAME_INDICES = [0, 1, 2]
 
 # Colors for each pose (vibrant, distinct colors)
 POSE_COLORS = [
@@ -46,7 +46,7 @@ mask_images = [Image.open(MASK_FILES[i]) for i in FRAME_INDICES]
 # Output directory
 # OUTPUT_DIR = Path(__file__).parent / "outputs_red_brush_rerecord"
 # OUTPUT_DIR = Path(__file__).parent / "outputs_hammer_rerecord"
-OUTPUT_DIR = Path(__file__).parent / "outputs_red_brush_rerecord_2"
+OUTPUT_DIR = Path(__file__).parent / "outputs_red_brush_rerecord_3"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Blur face region in all RGB images
@@ -411,6 +411,53 @@ for i, name in enumerate(POSE_NAMES_SIMPLE):
     )
     output_path = OUTPUT_DIR / f"pose_sequence_{name}_simple.png"
     Image.fromarray(single_pose_img).save(output_path)
+    print(f"Saved {output_path}")
+
+# Create individual pose images with NO background (clean, white background with just the object)
+print("Creating individual pose images (clean, no background)...")
+from scipy import ndimage
+
+for i, (color, name) in enumerate(zip(POSE_COLORS, POSE_NAMES)):
+    # Start with white background
+    H, W, _ = np.array(rgb_images[i]).shape
+    clean_img = np.full((H, W, 3), 255, dtype=np.float32)
+    
+    rgb_array = np.array(rgb_images[i]).astype(np.float32)
+    mask_bool = get_mask_bool(mask_images[i])
+    
+    # Paint object on white background
+    for c in range(3):
+        clean_img[:, :, c] = np.where(mask_bool, rgb_array[:, :, c], clean_img[:, :, c])
+    
+    # Add colored outline
+    outline_width = 4
+    dilated = ndimage.binary_dilation(mask_bool, iterations=outline_width)
+    outline = dilated & ~mask_bool
+    for c in range(3):
+        clean_img[:, :, c] = np.where(outline, color[c], clean_img[:, :, c])
+    
+    clean_img = np.clip(clean_img, 0, 255).astype(np.uint8)
+    output_path = OUTPUT_DIR / f"pose_sequence_{name}_clean.png"
+    Image.fromarray(clean_img).save(output_path)
+    print(f"Saved {output_path}")
+
+# Also save clean versions without colored outlines
+print("Creating individual pose images (clean, no background, no outlines)...")
+for i, name in enumerate(POSE_NAMES_SIMPLE):
+    # Start with white background
+    H, W, _ = np.array(rgb_images[i]).shape
+    clean_img = np.full((H, W, 3), 255, dtype=np.float32)
+    
+    rgb_array = np.array(rgb_images[i]).astype(np.float32)
+    mask_bool = get_mask_bool(mask_images[i])
+    
+    # Paint object on white background (no outline)
+    for c in range(3):
+        clean_img[:, :, c] = np.where(mask_bool, rgb_array[:, :, c], clean_img[:, :, c])
+    
+    clean_img = np.clip(clean_img, 0, 255).astype(np.uint8)
+    output_path = OUTPUT_DIR / f"pose_sequence_{name}_clean.png"
+    Image.fromarray(clean_img).save(output_path)
     print(f"Saved {output_path}")
 
 # Create combined pose sequence WITHOUT colored outlines
