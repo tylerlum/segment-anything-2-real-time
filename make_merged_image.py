@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 # Paths
 # DEMO_DIR = Path("/juno/u/kedia/FoundationPose/human_videos/Jan_17/brush/anvil_brush/sweep_forward")
 # DEMO_DIR = Path("/juno/u/kedia/FoundationPose/human_videos/Jan_17/hammer/toy_hammer/down_swing")
-DEMO_DIR = Path("/juno/u/tylerlum/Downloads/red_brush_sweep_forward_human_rerecord")
-# DEMO_DIR = Path("/juno/u/tylerlum/Downloads/toy_hammer_down_swing_human_rerecord/")
+# DEMO_DIR = Path("/juno/u/tylerlum/Downloads/red_brush_sweep_forward_human_rerecord")
+DEMO_DIR = Path("/juno/u/tylerlum/Downloads/toy_hammer_down_swing_human_rerecord/")
 
 assert DEMO_DIR.exists(), f"Demo directory not found: {DEMO_DIR}"
 RGB_DIR = DEMO_DIR / "rgb"
@@ -27,8 +27,8 @@ print(f"Found {len(MASK_FILES)} mask files")
 # FRAME_INDICES = [0, 200, 400]
 # FRAME_INDICES = [0, 137, 246, 355]
 # FRAME_INDICES = [137, 246, 355]
-FRAME_INDICES = [1, 2, 3]
-# FRAME_INDICES = [1, 3, 4]
+# FRAME_INDICES = [1, 2, 3]
+FRAME_INDICES = [1, 3, 4]
 # FRAME_INDICES = [0, 1, 2]
 
 # Colors for each pose (vibrant, distinct colors)
@@ -46,15 +46,16 @@ mask_images = [Image.open(MASK_FILES[i]) for i in FRAME_INDICES]
 # Output directory
 # OUTPUT_DIR = Path(__file__).parent / "outputs_red_brush_rerecord"
 # OUTPUT_DIR = Path(__file__).parent / "outputs_hammer_rerecord"
-OUTPUT_DIR = Path(__file__).parent / "outputs_red_brush_rerecord_3"
+# OUTPUT_DIR = Path(__file__).parent / "outputs_red_brush_rerecord_3"
+OUTPUT_DIR = Path(__file__).parent / "outputs_hammer_rerecord_2"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Blur face region in all RGB images
 # Define bounding box for face: (x_min, y_min, x_max, y_max)
 # Adjust these coordinates to match where your face is in the images
 # FACE_BBOX = (300, 0, 600, 200)  # Example: adjust to your face location
-FACE_BBOX = (0, 0, 150, 75)  # Example: adjust to your face location
-# FACE_BBOX = (0, 0, 250, 150)  # Example: adjust to your face location
+# FACE_BBOX = (0, 0, 150, 75)  # Example: adjust to your face location
+FACE_BBOX = (0, 0, 250, 150)  # Example: adjust to your face location
 BLUR_FACE = True  # Set to True to enable face blurring
 
 def blur_region(
