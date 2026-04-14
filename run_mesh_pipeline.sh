@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+print_step() {
+    echo
+    echo "########################################################################"
+    echo "STEP $1: $2"
+    echo "########################################################################"
+}
+
 # This script is a documented template for the full SAM2 -> SAM3 -> mesh postprocess pipeline.
 #
 # You should edit the configuration section below for your own machine.
@@ -122,6 +129,7 @@ mkdir -p "${OBJECT_MASK_DIR}"
 mkdir -p "${OUTPUT_DIR}"
 
 # Fail early with a clear message if either environment is missing required deps.
+print_step "0" "Checking SAM2 and SAM3 environments"
 require_sam2_imports
 require_sam3_imports
 
@@ -133,6 +141,7 @@ require_sam3_imports
 # Replace OBJECT_PROMPT_ARGS above with your own prompt mode.
 # If you use an interactive mode like --use_second_prompt, the script will open
 # the first frame and wait for your clicks.
+print_step "1" "Running SAM2 on the original RGB frames to create object masks"
 sam2 python video_sam2.py \
     --input_dir "${DEMO_DIR}/rgb" \
     --output_dir "${OBJECT_MASK_DIR}" \
@@ -146,6 +155,7 @@ sam2 python video_sam2.py \
 # This assumes SAM3's run_inference.py expects:
 # - input_dir containing rgb/, depth/, and masks/
 # - output_dir where mesh/, rgb/, depth/, cam_poses.npy, etc. will be written
+print_step "2" "Running SAM3 to reconstruct the object mesh"
 sam3 python run_inference.py \
     --input_dir "${DEMO_DIR}" \
     --output_dir "${OUTPUT_DIR}"
@@ -156,6 +166,7 @@ sam3 python run_inference.py \
 ################################################################################
 
 # This writes rendered RGB/depth frames into OUTPUT_DIR for downstream part masking.
+print_step "3" "Rendering the reconstructed mesh into RGB/depth views"
 sam2 python create_mesh_video.py \
     --mesh-filepath "${OUTPUT_DIR}/mesh/mesh.obj" \
     --output_dir "${OUTPUT_DIR}"
@@ -166,6 +177,7 @@ sam2 python create_mesh_video.py \
 ################################################################################
 
 # Replace HANDLE_PROMPT_ARGS above with your own prompt mode if needed.
+print_step "4" "Running SAM2 on rendered frames to create handle masks"
 sam2 python video_sam2.py \
     --input_dir "${OUTPUT_DIR}/rgb" \
     --output_dir "${OUTPUT_DIR}/handle_masks" \
@@ -177,6 +189,7 @@ sam2 python video_sam2.py \
 ################################################################################
 
 # Replace HEAD_PROMPT_ARGS above with your own prompt mode if needed.
+print_step "5" "Running SAM2 on rendered frames to create head masks"
 sam2 python video_sam2.py \
     --input_dir "${OUTPUT_DIR}/rgb" \
     --output_dir "${OUTPUT_DIR}/head_masks" \
@@ -187,6 +200,7 @@ sam2 python video_sam2.py \
 # Step 6: Merge masks across views, compute handle frame, crop handle mesh
 ################################################################################
 
+print_step "6" "Merging masks in 3D and exporting handle-frame meshes"
 sam2 python process_mesh.py \
     --output_dir "${OUTPUT_DIR}"
 
@@ -195,6 +209,7 @@ sam2 python process_mesh.py \
 # Final artifact
 ################################################################################
 
+print_step "7" "Final artifact"
 echo "Expected transformed mesh:"
 echo "  ${OUTPUT_DIR}/mesh_handle_frame/mesh_handle_frame.obj"
 ls "${OUTPUT_DIR}/mesh_handle_frame/mesh_handle_frame.obj"
