@@ -235,6 +235,101 @@ The final transformed mesh is expected at:
 ${OUTPUT_DIR}/mesh_handle_frame/mesh_handle_frame.obj
 ```
 
+### `run_hand_pipeline.sh`
+
+This is the main end-to-end template script for the hand pose estimation pipeline. It is designed to be edited for your machine and your dataset.
+
+The current default configuration in the script points at:
+
+* `DEMO_DIR=/juno/u/kedia/FoundationPose/human_videos/Jan_17/brush/red_brush/sweep_forward`
+* `HAND_MASK_DIR=${DEMO_DIR}/hand_mask`
+* `HAND_POSE_TRAJECTORY_DIR=${DEMO_DIR}/hand_pose_trajectory`
+
+The script defines two helper functions:
+
+* `sam2()`
+  * `cd`s into the SAM2 repo
+  * activates the SAM2 `.venv`
+  * runs SAM2-side commands such as `video_sam2.py`
+* `hamer_depth()`
+  * `cd`s into the HaMeR Depth repo
+  * activates the HaMeR Depth `.venv`
+  * runs `run.py` for 3D hand pose extraction
+
+The script also performs early import checks so it fails immediately if either environment is missing required dependencies.
+
+### How to Adapt `run_hand_pipeline.sh`
+
+For a new dataset, edit the configuration block near the top of the script:
+
+* `SAM2_REPO`
+* `HAMER_DEPTH_REPO`
+* `DEMO_DIR`
+* `HAND_MASK_DIR`
+* `HAND_POSE_TRAJECTORY_DIR`
+* `HAND_PROMPT_ARGS`
+* `HAND_TYPE`
+* `HAMER_EXTRA_ARGS`
+
+For example, if your demo lives at:
+
+```bash
+/path/to/my_demo/
+├── rgb/
+├── depth/
+└── cam_K.txt
+```
+
+then update:
+
+```bash
+DEMO_DIR="/path/to/my_demo"
+HAND_TYPE="RIGHT"   # or LEFT
+```
+
+If you want fixed prompt coordinates instead of interactive clicks, replace:
+
+```bash
+HAND_PROMPT_ARGS=(--use_negative_prompt)
+```
+
+with something like:
+
+```bash
+HAND_PROMPT_ARGS=(--prompt_x 643 --prompt_y 357)
+```
+
+To skip frames that fail without crashing the whole run:
+
+```bash
+HAMER_EXTRA_ARGS=(--ignore-exceptions)
+```
+
+### Running the Hand Pipeline
+
+Once the two environments are set up correctly:
+
+```bash
+cd /home/tylerlum/github_repos/segment-anything-2-real-time
+bash run_hand_pipeline.sh
+```
+
+That script will:
+
+1. create hand masks in `${DEMO_DIR}/hand_mask/` using SAM2 (interactive click on first frame)
+2. run HaMeR Depth to produce per-frame `.json` / `.obj` / `.png` files in `${DEMO_DIR}/hand_pose_trajectory/`
+
+The final outputs are expected at:
+
+```bash
+${DEMO_DIR}/hand_pose_trajectory/
+├── 000000.json   # 3D keypoints + global_orient
+├── 000000.obj    # hand mesh
+├── 000000.png    # before/after annotated image
+├── 000001.json
+├── ...
+```
+
 # TYLER DOCUMENTATION (June 1, 2025)
 
 NOTE: The purpose of this documentation is NOT to be super precise and detailed, but rather to be a quick reference for how to run the code and how it works.
