@@ -22,10 +22,10 @@ SAM2_REPO="/home/tylerlum/github_repos/segment-anything-2-real-time"
 SAM3_REPO="/home/tylerlum/github_repos/sam-3d-objects"
 
 # Input demo directory. Expected to contain rgb/ and depth/.
-DEMO_DIR="/juno/u/kedia/FoundationPose/human_videos/Jan_17/brush/anvil_brush/sweep_forward"
+DEMO_DIR="/juno/u/kedia/FoundationPose/human_videos/Jan_17/spatula/spoon_spatula/flip_pancake"
 
 # Output directory for SAM3 mesh results and downstream processed assets.
-OUTPUT_DIR="${SAM3_REPO}/outputs/anvil_brush/sweep_forward"
+OUTPUT_DIR="${SAM3_REPO}/outputs/spoon_spatula/flip_pancake"
 
 # Where to write the initial SAM2 object masks on the original RGB video.
 OBJECT_MASK_DIR="${DEMO_DIR}/masks"
@@ -74,13 +74,33 @@ sam3() {
     # - your SAM3 repo lives elsewhere
     # - your SAM3 environment activation differs
     #
-    # Current Tyler setup assumes SAM3 also uses a local .venv.
+    # Current Tyler setup uses the SAM3 local .venv311.
     # If your SAM3 setup is conda-based, replace the source line with your own activation.
+    #
+    # Note: run_inference.py imports `viser` at top level, so `viser` must be installed
+    # in the SAM3 environment, not the SAM2 environment.
     cd "${SAM3_REPO}"
     # shellcheck disable=SC1091
-    source .venv/bin/activate
+    source .venv311/bin/activate
     export PYTHONPATH="${SAM3_REPO}:${PYTHONPATH:-}"
     "$@"
+}
+
+require_sam2_imports() {
+    sam2 python - <<'PY'
+import cv2
+import torch
+print("SAM2 env OK")
+PY
+}
+
+require_sam3_imports() {
+    sam3 python - <<'PY'
+import trimesh
+import tyro
+import viser
+print("SAM3 env OK")
+PY
 }
 
 
@@ -100,6 +120,10 @@ fi
 
 mkdir -p "${OBJECT_MASK_DIR}"
 mkdir -p "${OUTPUT_DIR}"
+
+# Fail early with a clear message if either environment is missing required deps.
+require_sam2_imports
+require_sam3_imports
 
 
 ################################################################################

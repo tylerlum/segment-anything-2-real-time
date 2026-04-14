@@ -1,6 +1,240 @@
 # segment-anything-2 real-time
 Run Segment Anything Model 2 on a **live video stream**
 
+# SimToolReal Pipeline (April 14, 2026)
+
+This repo now also supports a full object-to-mesh postprocessing pipeline for real RGB-D demonstrations. In addition to running SAM2 on live streams or folders of images, the repo now includes scripts to:
+
+* generate object masks over a recorded RGB sequence
+* hand those masks to a SAM3 / mesh reconstruction pipeline
+* render the reconstructed mesh into RGB/depth views
+* segment semantic parts such as handle and head on the rendered views
+* merge those masks back into 3D with `process_mesh.py`
+* compute a canonical handle frame and export cropped / transformed meshes
+
+At a high level, the flow is:
+
+1. Run `video_sam2.py` on the original `rgb/` frames to create `masks/`.
+2. Run SAM3 on `rgb/`, `depth/`, and `masks/` to reconstruct a mesh.
+3. Run `create_mesh_video.py` to render the reconstructed mesh into orbit RGB/depth frames.
+4. Run `video_sam2.py` again on those rendered frames to get `handle_masks/` and `head_masks/`.
+5. Run `process_mesh.py` to merge those masks into 3D, estimate a handle-aligned frame, and export the final artifacts.
+
+## UV Install
+
+The original README below documents older ROS / conda workflows. Those still exist, but the current local Python workflow for this repo is now cleanly supported with `uv`.
+
+### SAM2 Repo Install with UV
+
+From this repo:
+
+```bash
+cd /home/tylerlum/github_repos/segment-anything-2-real-time
+
+# Install a uv-managed Python that includes Python headers needed for sam2._C
+uv python install 3.10
+
+# Create the venv from the uv-managed Python, not /usr/bin/python3.10
+uv venv .venv --python /afs/cs.stanford.edu/u/tylerlum/.local/share/uv/python/cpython-3.10-linux-x86_64-gnu/bin/python3.10
+
+source .venv/bin/activate
+```
+
+Install PyTorch with CUDA wheels:
+
+```bash
+PATH=/usr/local/cuda/bin:$PATH CUDA_HOME=/usr/local/cuda \
+uv pip install --python .venv/bin/python torch torchvision \
+  --index-url https://download.pytorch.org/whl/cu126
+```
+
+Install the runtime dependencies used by the local scripts:
+
+```bash
+uv pip install --python .venv/bin/python \
+  hydra-core iopath opencv-python matplotlib tqdm numpy tyro \
+  pyvista trimesh viser ninja
+```
+
+Build and install the package editable, including the `sam2._C` CUDA extension:
+
+```bash
+PATH=/usr/local/cuda/bin:$PATH CUDA_HOME=/usr/local/cuda MAX_JOBS=4 \
+uv pip install --python .venv/bin/python -e .
+```
+
+Download checkpoints:
+
+```bash
+cd checkpoints
+bash download_ckpts.sh
+cd ..
+```
+
+Notes:
+
+* `video_sam2.py` and the SAM2 predictors use the compiled `sam2._C` extension. The extension will not build correctly if you create `.venv` from the system Python that lacks `Python.h`.
+* `process_mesh.py` imports `viser`, so `viser` must be installed in the SAM2 `.venv`.
+* The machine used for this setup had CUDA at `/usr/local/cuda` and a 4090 GPU. If your CUDA install lives elsewhere, update `PATH` and `CUDA_HOME`.
+
+### SAM3 Repo Environment
+
+The full mesh pipeline also depends on a separate SAM3 repo. In Tyler's current setup:
+
+* SAM2 repo: `/home/tylerlum/github_repos/segment-anything-2-real-time`
+* SAM3 repo: `/home/tylerlum/github_repos/sam-3d-objects`
+* SAM3 environment: `/home/tylerlum/github_repos/sam-3d-objects/.venv311`
+
+Important:
+
+* `run_inference.py` in the SAM3 repo imports `viser` at top level.
+* `trimesh`, `tyro`, and `viser` therefore need to be installed in the SAM3 environment as well.
+
+## Important Scripts
+
+### `video_sam2.py`
+
+Runs SAM2 on a folder of RGB frames and writes binary masks.
+
+Typical usage:
+
+```bash
+source .venv/bin/activate
+
+python video_sam2.py \
+  --input_dir /path/to/demo/rgb \
+  --output_dir /path/to/demo/masks \
+  --use_second_prompt
+```
+
+Prompting options include:
+
+* `--prompt_x ... --prompt_y ...` for a fixed positive click
+* `--use_second_prompt` for two positive clicks on the first frame
+* `--use_negative_prompt` for one positive and one negative click on the first frame
+
+### `create_mesh_video.py`
+
+Renders a reconstructed mesh into an orbit video and saves rendered RGB/depth frames plus camera information for downstream processing.
+
+Typical usage:
+
+```bash
+source .venv/bin/activate
+
+python create_mesh_video.py \
+  --mesh-filepath /path/to/output/mesh/mesh.obj \
+  --output_dir /path/to/output
+```
+
+### `process_mesh.py`
+
+Takes the SAM3 rendered outputs plus `handle_masks/` and `head_masks/`, merges them into 3D, visualizes them in `viser`, computes a canonical handle frame, and exports transformed and cropped meshes.
+
+Expected input structure inside `--output_dir`:
+
+* `mesh/mesh.obj`
+* `rgb/`
+* `depth/`
+* `cam_K.txt`
+* `cam_poses.npy`
+* `handle_masks/`
+* `head_masks/`
+
+Typical usage:
+
+```bash
+source .venv/bin/activate
+
+python process_mesh.py \
+  --output_dir /path/to/output
+```
+
+### `run_mesh_pipeline.sh`
+
+This is the main end-to-end template script for the full pipeline. It is designed to be edited for your machine and your dataset.
+
+The current default configuration in the script points at:
+
+* `DEMO_DIR=/juno/u/kedia/FoundationPose/human_videos/Jan_17/spatula/spoon_spatula/flip_pancake`
+* `OUTPUT_DIR=/home/tylerlum/github_repos/sam-3d-objects/outputs/spoon_spatula/flip_pancake`
+
+The script defines two helper functions:
+
+* `sam2()`
+  * `cd`s into the SAM2 repo
+  * activates the SAM2 `.venv`
+  * runs SAM2-side commands such as `video_sam2.py`, `create_mesh_video.py`, and `process_mesh.py`
+* `sam3()`
+  * `cd`s into the SAM3 repo
+  * activates the SAM3 `.venv311`
+  * runs SAM3-side commands such as `run_inference.py`
+
+The script also performs early import checks so it fails immediately if either environment is missing required dependencies.
+
+### How to Adapt `run_mesh_pipeline.sh`
+
+For a new dataset, edit the configuration block near the top of the script:
+
+* `SAM2_REPO`
+* `SAM3_REPO`
+* `DEMO_DIR`
+* `OUTPUT_DIR`
+* `OBJECT_PROMPT_ARGS`
+* `HANDLE_PROMPT_ARGS`
+* `HEAD_PROMPT_ARGS`
+
+For example, if your demo lives at:
+
+```bash
+/path/to/my_demo/
+├── rgb/
+├── depth/
+└── cam_K.txt
+```
+
+then update:
+
+```bash
+DEMO_DIR="/path/to/my_demo"
+OUTPUT_DIR="${SAM3_REPO}/outputs/my_object/my_sequence"
+```
+
+If you want fixed prompt coordinates instead of interactive clicks, replace:
+
+```bash
+OBJECT_PROMPT_ARGS=(--use_second_prompt)
+```
+
+with something like:
+
+```bash
+OBJECT_PROMPT_ARGS=(--prompt_x 664 --prompt_y 335)
+```
+
+### Running the Full Pipeline
+
+Once the two environments are set up correctly:
+
+```bash
+cd /home/tylerlum/github_repos/segment-anything-2-real-time
+bash run_mesh_pipeline.sh
+```
+
+That script will:
+
+1. create object masks in the original demo directory
+2. run SAM3 reconstruction
+3. render the mesh into RGB/depth views
+4. collect handle and head masks on the rendered views
+5. run `process_mesh.py`
+
+The final transformed mesh is expected at:
+
+```bash
+${OUTPUT_DIR}/mesh_handle_frame/mesh_handle_frame.obj
+```
+
 # TYLER DOCUMENTATION (June 1, 2025)
 
 NOTE: The purpose of this documentation is NOT to be super precise and detailed, but rather to be a quick reference for how to run the code and how it works.
