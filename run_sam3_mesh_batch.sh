@@ -8,6 +8,7 @@ TASK_GLOB="${TASK_GLOB:-*}"
 MASK_GLOB="${MASK_GLOB:-*masks*}"
 SKIP_EXISTING="${SKIP_EXISTING:-1}"
 DRY_RUN="${DRY_RUN:-0}"
+MESH_MODE="${MESH_MODE:-texture}"
 
 usage() {
     cat <<EOF
@@ -22,6 +23,7 @@ Options:
   --sam3-repo PATH      sam-3d-objects repo path
   --task-glob GLOB      Task folder glob under DATA_ROOT, default: *
   --mask-glob GLOB      Mask folder glob inside each task, default: *masks*
+  --mesh-mode MODE      SAM3D mesh mode: texture or vertex_color, default: texture
   --no-skip-existing    Re-run tasks even if mesh/mesh.obj already exists
   --dry-run             Print planned jobs without running SAM3D
   -h, --help            Show this help
@@ -53,6 +55,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mask-glob)
             MASK_GLOB="$2"
+            shift 2
+            ;;
+        --mesh-mode)
+            MESH_MODE="$2"
             shift 2
             ;;
         --no-skip-existing)
@@ -210,6 +216,7 @@ run_one() {
     echo "cam_K: ${task_dir}/cam_K.txt"
     echo "Masks: ${masks_dir}"
     echo "Output: ${output_dir}"
+    echo "Mesh mode: ${MESH_MODE}"
 
     if [[ "${DRY_RUN}" == "1" ]]; then
         return
@@ -219,6 +226,7 @@ run_one() {
     sam3 python run_inference.py \
         --input_dir "${stage_dir}" \
         --output_dir "${output_dir}" \
+        --mesh_mode "${MESH_MODE}" \
         --non-interactive
 }
 
