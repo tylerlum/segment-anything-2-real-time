@@ -9,6 +9,9 @@ MASK_GLOB="${MASK_GLOB:-*masks*}"
 SKIP_EXISTING="${SKIP_EXISTING:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 MESH_MODE="${MESH_MODE:-texture}"
+TEXTURE_SIZE="${TEXTURE_SIZE:-1024}"
+TEXTURE_RENDER_RESOLUTION="${TEXTURE_RENDER_RESOLUTION:-1024}"
+TEXTURE_NVIEWS="${TEXTURE_NVIEWS:-100}"
 
 usage() {
     cat <<EOF
@@ -24,6 +27,10 @@ Options:
   --task-glob GLOB      Task folder glob under DATA_ROOT, default: *
   --mask-glob GLOB      Mask folder glob inside each task, default: *masks*
   --mesh-mode MODE      SAM3D mesh mode: texture or vertex_color, default: texture
+  --texture-size N      Texture atlas size for texture mode, default: 1024
+  --texture-render-resolution N
+                         Render resolution for texture baking, default: 1024
+  --texture-nviews N    Number of texture-baking views, default: 100
   --no-skip-existing    Re-run tasks even if mesh/mesh.obj already exists
   --dry-run             Print planned jobs without running SAM3D
   -h, --help            Show this help
@@ -59,6 +66,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mesh-mode)
             MESH_MODE="$2"
+            shift 2
+            ;;
+        --texture-size)
+            TEXTURE_SIZE="$2"
+            shift 2
+            ;;
+        --texture-render-resolution)
+            TEXTURE_RENDER_RESOLUTION="$2"
+            shift 2
+            ;;
+        --texture-nviews)
+            TEXTURE_NVIEWS="$2"
             shift 2
             ;;
         --no-skip-existing)
@@ -217,6 +236,9 @@ run_one() {
     echo "Masks: ${masks_dir}"
     echo "Output: ${output_dir}"
     echo "Mesh mode: ${MESH_MODE}"
+    echo "Texture size: ${TEXTURE_SIZE}"
+    echo "Texture render resolution: ${TEXTURE_RENDER_RESOLUTION}"
+    echo "Texture nviews: ${TEXTURE_NVIEWS}"
 
     if [[ "${DRY_RUN}" == "1" ]]; then
         return
@@ -227,6 +249,9 @@ run_one() {
         --input_dir "${stage_dir}" \
         --output_dir "${output_dir}" \
         --mesh_mode "${MESH_MODE}" \
+        --texture_size "${TEXTURE_SIZE}" \
+        --texture_render_resolution "${TEXTURE_RENDER_RESOLUTION}" \
+        --texture_nviews "${TEXTURE_NVIEWS}" \
         --non-interactive
 }
 
