@@ -8,7 +8,7 @@ print_step() {
     echo "########################################################################"
 }
 
-# This script is a documented template for the full SAM2 -> SAM3 -> mesh postprocess pipeline.
+# This script is the GT-depth pickupbowl_1 SAM2 -> SAM3 -> mesh postprocess pipeline.
 #
 # You should edit the configuration section below for your own machine.
 # In particular, replace repo paths, dataset paths, and prompt arguments as needed.
